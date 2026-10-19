@@ -1,0 +1,8 @@
+{
+  "householdName": "Our family home",
+  "members": [
+    { "unit": "AQ", "fullName": "Full name of AQ", "email": "admin@example.com", "admin": true, "dutyLabel": "P1" },
+    { "unit": "AK", "fullName": "Full name of AK", "email": "", "dutyLabel": "P2" },
+    { "unit": "AB", "fullName": "Full name of AB", "email": "", "dutyLabel": "P3" }
+  ]
+}

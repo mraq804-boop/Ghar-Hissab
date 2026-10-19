@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+import.config.json
+test-results
+playwright-report
+.claude
+.next
+node_modules
+supabase/.temp

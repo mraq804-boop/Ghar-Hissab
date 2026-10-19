@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "family-home-prod-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "start", "-p", "3100"],
+      "cwd": "D:\Projects\family-home",
+      "env": {
+        "NEXT_PUBLIC_SUPABASE_URL": "https://placeholder.supabase.co",
+        "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_placeholder_build_only",
+        "NEXT_PUBLIC_SITE_URL": "http://localhost:3100"
+      },
+      "port": 3100
+    }
+  ]
+}
