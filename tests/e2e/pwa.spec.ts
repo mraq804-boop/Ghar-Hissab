@@ -49,6 +49,6 @@ test("signed-in pages are never stored in the service worker cache", async ({ pa
   });
   expect(cached).toContain("/offline");
   for (const path of cached) {
-    expect(path === "/offline" || path === "/manifest.webmanifest" || path.startsWith("/icons/") || path.startsWith("/_next/static/")).toBe(true);
+    expect(path === "/offline" || path === "/manifest.webmanifest" || path.startsWith("/icons/") || path.startsWith("/tesseract/") || path.startsWith("/_next/static/")).toBe(true);
   }
 });

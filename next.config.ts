@@ -12,7 +12,7 @@ const supabase = supabaseHost ? `https://${supabaseHost}` : "";
 
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: blob: ${supabase}`,
   `connect-src 'self' ${supabase} ${supabaseHost ? `wss://${supabaseHost}` : ""}`,

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Camera, Check, FileText, ImageUp, Loader2, RotateCcw, X } from "lucide-react";
+import { Banknote, Camera, Check, FileText, ImageUp, Loader2, RotateCcw, ScanText, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -13,12 +13,15 @@ import { PAYMENT_METHODS, methodLabel } from "@/lib/labels";
 import { parseRupeesToPaisa, formatPaisa } from "@/lib/finance/money";
 import { ALLOWED_PROOF_TYPES, PROOF_EXT, type ProofType } from "@/lib/validation/payment";
 import { cn } from "@/lib/utils";
+import { readPaymentScreenshot, READABLE_TYPES } from "@/lib/ocr/read-screenshot";
+import type { PaymentRead } from "@/lib/ocr/parse-payment";
 import { submitPayment } from "./actions";
 
 type Unit = { id: string; code: string };
 type PeriodOpt = { id: string; label: string };
 
-const STEPS = ["Details", "Screenshot", "Review"] as const;
+const STEPS = ["Screenshot", "Details", "Review"] as const;
+const FROM_SCREENSHOT = "Read from the screenshot. Please check it.";
 
 async function compress(file: File): Promise<File> {
   if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size < 1_200_000) return file;
@@ -70,6 +73,18 @@ export function PaymentForm({
   const fileInput = useRef<HTMLInputElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [readProgress, setReadProgress] = useState(0);
+  const [readNote, setReadNote] = useState<string | null>(null);
+  const [autoFilled, setAutoFilled] = useState<Set<string>>(new Set());
+  const readToken = useRef(0);
+  const edited = (field: string) =>
+    setAutoFilled((cur) => {
+      if (!cur.has(field)) return cur;
+      const n = new Set(cur);
+      n.delete(field);
+      return n;
+    });
 
   useEffect(() => () => {
     if (preview) URL.revokeObjectURL(preview);
@@ -82,7 +97,6 @@ export function PaymentForm({
       return null;
     }
   })();
-  const needsProof = method !== "cash";
 
   const validateDetails = () => {
     const e: Record<string, string> = {};
@@ -91,6 +105,7 @@ export function PaymentForm({
     if (!paidOn) e.paidOn = "Choose the payment date";
     if (paidOn > new Date().toISOString().slice(0, 10)) e.paidOn = "The payment date can't be in the future";
     if (method !== "cash" && reference.trim().length === 0) e.reference = "Add the transaction ID from the receipt so it can't be counted twice";
+    if (method !== "cash" && !file) e.method = "Payments other than cash need a screenshot. Go back and add it.";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -110,6 +125,51 @@ export function PaymentForm({
     setFile(ready);
     setUploadedPath(null);
     setPreview(ready.type.startsWith("image/") && ready.type !== "image/heic" ? URL.createObjectURL(ready) : null);
+    setReadNote(null);
+    if (!READABLE_TYPES.includes(ready.type)) return;
+    const token = ++readToken.current;
+    setReading(true);
+    setReadProgress(0);
+    const read = await readPaymentScreenshot(ready, setReadProgress);
+    if (token !== readToken.current) return;
+    setReading(false);
+    if (read) applyRead(read);
+    else setReadNote("Couldn't read this screenshot. You can type the details on the next step.");
+  };
+
+  const applyRead = (r: PaymentRead) => {
+    const filled = new Set<string>();
+    if (r.amount) {
+      setAmount(r.amount.replace(/\.00$/, ""));
+      filled.add("amount");
+    }
+    if (r.paidOn && r.paidOn <= new Date().toISOString().slice(0, 10)) {
+      setPaidOn(r.paidOn);
+      filled.add("paidOn");
+    }
+    if (r.reference) {
+      setReference(r.reference);
+      filled.add("reference");
+    }
+    if (r.method) {
+      setMethod(r.method);
+      filled.add("method");
+    }
+    setAutoFilled(filled);
+    setReadNote(
+      filled.size
+        ? `Filled ${filled.size} detail${filled.size === 1 ? "" : "s"} from the screenshot. Check them on the next step.`
+        : "Couldn't find payment details in this screenshot. You can type them on the next step.",
+    );
+  };
+
+  const clearFile = () => {
+    readToken.current++;
+    setReading(false);
+    setReadNote(null);
+    setFile(null);
+    setPreview(null);
+    setUploadedPath(null);
   };
 
   const upload = async () => {
@@ -128,10 +188,9 @@ export function PaymentForm({
   };
 
   const next = async () => {
-    if (step === 0 && !validateDetails()) return;
-    if (step === 1) {
-      if (needsProof && !file) {
-        setErrors({ file: "Attach a screenshot of the payment confirmation." });
+    if (step === 0) {
+      if (!file) {
+        setErrors({ file: "Add the payment screenshot, or tap “Paid in cash” below." });
         return;
       }
       try {
@@ -141,7 +200,16 @@ export function PaymentForm({
         return;
       }
     }
+    if (step === 1 && !validateDetails()) return;
+    setErrors({});
     setStep((s) => s + 1);
+  };
+
+  const paidInCash = () => {
+    clearFile();
+    setMethod("cash");
+    setErrors({});
+    setStep(1);
   };
 
   const submit = () =>
@@ -164,7 +232,7 @@ export function PaymentForm({
       } else {
         toast.error(r.error);
         if (r.fieldErrors) setErrors(Object.fromEntries(Object.entries(r.fieldErrors).map(([k, v]) => [k, v[0]])));
-        if (/reference/i.test(r.error)) setStep(0);
+        if (/reference/i.test(r.error)) setStep(1);
       }
     });
 
@@ -189,7 +257,7 @@ export function PaymentForm({
         ))}
       </ol>
 
-      {step === 0 ? (
+      {step === 1 ? (
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Paid by" htmlFor="payer" error={errors.payer}>
@@ -206,22 +274,22 @@ export function PaymentForm({
             </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Amount (Rs)" htmlFor="amount" error={errors.amount}>
-              <Input id="amount" inputMode="decimal" className="num h-12 text-lg font-semibold" value={amount} onChange={(e) => setAmount(e.target.value)} aria-invalid={!!errors.amount} autoFocus />
+            <Field label="Amount (Rs)" htmlFor="amount" error={errors.amount} hint={autoFilled.has("amount") ? FROM_SCREENSHOT : undefined}>
+              <Input id="amount" inputMode="decimal" className="num h-12 text-lg font-semibold" value={amount} onChange={(e) => { setAmount(e.target.value); edited("amount"); }} aria-invalid={!!errors.amount} autoFocus={!autoFilled.has("amount")} />
             </Field>
-            <Field label="Payment date" htmlFor="paidOn" error={errors.paidOn}>
-              <Input id="paidOn" type="date" className="h-12" value={paidOn} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setPaidOn(e.target.value)} />
+            <Field label="Payment date" htmlFor="paidOn" error={errors.paidOn} hint={autoFilled.has("paidOn") ? FROM_SCREENSHOT : undefined}>
+              <Input id="paidOn" type="date" className="h-12" value={paidOn} max={new Date().toISOString().slice(0, 10)} onChange={(e) => { setPaidOn(e.target.value); edited("paidOn"); }} />
             </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Method" htmlFor="method">
-              <Select value={method} onValueChange={setMethod}>
+            <Field label="Method" htmlFor="method" error={errors.method} hint={autoFilled.has("method") ? FROM_SCREENSHOT : undefined}>
+              <Select value={method} onValueChange={(v) => { setMethod(v); edited("method"); }}>
                 <SelectTrigger id="method" className="h-10 w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>{PAYMENT_METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
               </Select>
             </Field>
-            <Field label={method === "cash" ? "Reference (optional)" : "Transaction ID"} htmlFor="reference" error={errors.reference}>
-              <Input id="reference" className="h-10" value={reference} onChange={(e) => setReference(e.target.value)} placeholder={method === "cash" ? "" : "From the app or bank SMS"} />
+            <Field label={method === "cash" ? "Reference (optional)" : "Transaction ID"} htmlFor="reference" error={errors.reference} hint={autoFilled.has("reference") ? FROM_SCREENSHOT : undefined}>
+              <Input id="reference" className="h-10" value={reference} onChange={(e) => { setReference(e.target.value); edited("reference"); }} placeholder={method === "cash" ? "" : "From the app or bank SMS"} />
             </Field>
           </div>
           <Field label="Notes (optional)" htmlFor="notes">
@@ -230,7 +298,7 @@ export function PaymentForm({
         </div>
       ) : null}
 
-      {step === 1 ? (
+      {step === 0 ? (
         <div className="space-y-3">
           {!file ? (
             <div
@@ -248,12 +316,11 @@ export function PaymentForm({
             >
               <ImageUp className="size-8 text-muted-foreground" />
               <p className="mt-3 font-medium">Add the payment screenshot</p>
-              <p className="mt-1 text-sm text-muted-foreground">JPG, PNG, WebP, HEIC or PDF, up to {maxUploadMb} MB. Large photos are shrunk before upload.</p>
+              <p className="mt-1 text-sm text-muted-foreground">The app reads the amount, date and transaction ID for you. JPG, PNG, WebP, HEIC or PDF, up to {maxUploadMb} MB.</p>
               <div className="mt-5 flex flex-wrap justify-center gap-2">
                 <Button type="button" variant="outline" onClick={() => fileInput.current?.click()}><ImageUp /> Choose file</Button>
                 <Button type="button" variant="outline" className="sm:hidden" onClick={() => cameraInput.current?.click()}><Camera /> Take photo</Button>
               </div>
-              {!needsProof ? <p className="mt-4 text-xs text-muted-foreground">Optional for cash payments.</p> : null}
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border">
@@ -265,13 +332,31 @@ export function PaymentForm({
               )}
               <div className="flex items-center justify-between border-t px-4 py-2 text-sm">
                 <span className="truncate text-muted-foreground">{(file.size / 1024).toFixed(0)} KB{uploadedPath ? ", uploaded" : ""}</span>
-                <Button type="button" variant="ghost" size="sm" onClick={() => { setFile(null); setPreview(null); setUploadedPath(null); }}>
+                <Button type="button" variant="ghost" size="sm" onClick={clearFile}>
                   <X /> Remove
                 </Button>
               </div>
             </div>
           )}
+          {reading ? (
+            <div role="status" className="rounded-xl border bg-accent/40 px-4 py-3 text-sm">
+              <p className="flex items-center gap-2 font-medium"><ScanText className="size-4 animate-pulse" /> Reading the screenshot on this phone…</p>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-haldi transition-[width]" style={{ width: `${Math.max(8, Math.round(readProgress * 100))}%` }} />
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">The first time takes a little longer while the reader downloads (about 7 MB, once).</p>
+            </div>
+          ) : readNote ? (
+            <p role="status" className="flex items-start gap-2 rounded-xl border bg-muted/40 px-4 py-3 text-sm">
+              <ScanText className="mt-0.5 size-4 shrink-0 text-muted-foreground" /> {readNote}
+            </p>
+          ) : null}
           {errors.file ? <p role="alert" className="text-sm text-destructive">{errors.file}</p> : null}
+          {!file ? (
+            <Button type="button" variant="ghost" className="w-full" onClick={paidInCash}>
+              <Banknote /> Paid in cash (no screenshot)
+            </Button>
+          ) : null}
           <input ref={fileInput} type="file" accept={ALLOWED_PROOF_TYPES.join(",")} className="sr-only" onChange={(e) => void choose(e.target.files?.[0])} />
           <input ref={cameraInput} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => void choose(e.target.files?.[0])} />
         </div>
@@ -303,9 +388,9 @@ export function PaymentForm({
           <Button type="button" variant="outline" className="h-11 flex-1" onClick={onDone}>Cancel</Button>
         )}
         {step < 2 ? (
-          <Button type="button" className="h-11 flex-[2]" onClick={() => void next()} disabled={uploading}>
-            {uploading ? <Loader2 className="animate-spin" /> : null}
-            {uploading ? "Uploading…" : step === 1 && !file && !needsProof ? "Skip" : "Continue"}
+          <Button type="button" className="h-11 flex-[2]" onClick={() => void next()} disabled={uploading || reading}>
+            {uploading || reading ? <Loader2 className="animate-spin" /> : null}
+            {uploading ? "Uploading…" : reading ? "Reading…" : "Continue"}
           </Button>
         ) : (
           <Button type="button" className="h-11 flex-[2]" onClick={submit} disabled={pending}>

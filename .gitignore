@@ -47,3 +47,6 @@ import.config.json
 # test output
 /test-results/
 /playwright-report/
+
+# copied from node_modules by scripts/copy-ocr-assets.mjs
+/public/tesseract/

@@ -4,6 +4,7 @@ const SOURCE = String.raw`
 const VERSION = ${JSON.stringify(VERSION)};
 const STATIC_CACHE = "gh-static-" + VERSION;
 const SHELL_CACHE = "gh-shell-" + VERSION;
+const OCR_CACHE = "gh-ocr-v1";
 const OFFLINE_URL = "/offline";
 const PRECACHE = [OFFLINE_URL, "/icons/192", "/icons/512", "/manifest.webmanifest"];
 
@@ -24,7 +25,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== STATIC_CACHE && k !== SHELL_CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== STATIC_CACHE && k !== SHELL_CACHE && k !== OCR_CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -38,6 +39,20 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+
+  // The on-device screenshot reader is large and rarely changes: keep it across deployments.
+  if (url.pathname.startsWith("/tesseract/")) {
+    event.respondWith(
+      caches.open(OCR_CACHE).then(async (cache) => {
+        const hit = await cache.match(req);
+        if (hit) return hit;
+        const res = await fetch(req);
+        if (res.ok) cache.put(req, res.clone());
+        return res;
+      }),
+    );
+    return;
+  }
 
   // Hashed build assets never change, so cache-first is safe and fast.
   if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/")) {

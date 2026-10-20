@@ -19,6 +19,8 @@ import { cn } from "@/lib/utils";
 import { reviewPayment } from "./actions";
 import { PaymentForm } from "./payment-form";
 import { ProofViewer } from "./proof-viewer";
+import { ScreenshotCheck } from "./screenshot-check";
+import { READABLE_TYPES } from "@/lib/ocr/read-screenshot";
 
 export type PaymentView = {
   id: string;
@@ -35,7 +37,7 @@ export type PaymentView = {
   createdAt: string;
   hasProof: boolean;
   proofMime: string | null;
-  duplicateProof: boolean;
+  warnings: string[];
   reviewReason: string | null;
   reviewedAt: string | null;
   periodLabel: string;
@@ -192,7 +194,7 @@ export function PaymentsBoard(p: Props) {
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5 truncate text-sm font-medium">
                         {r.reference ? r.reference : methodLabel(r.method)}
-                        {r.duplicateProof ? <AlertTriangle className="size-3.5 text-warning" aria-label="Screenshot used more than once" /> : null}
+                        {r.warnings.length ? <AlertTriangle className="size-3.5 text-warning" aria-label="Possible duplicate" /> : null}
                       </span>
                       <span className="block truncate text-xs text-muted-foreground">{format(new Date(r.paidOn), "d MMM yyyy")}, {methodLabel(r.method)}</span>
                     </span>
@@ -321,15 +323,18 @@ function PaymentDetail({
         <StatusBadge status={r.status} />
       </div>
 
-      {r.duplicateProof ? (
-        <p className="flex gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" /> This exact screenshot is attached to another payment. Check it isn&apos;t being counted twice.
+      {r.warnings.map((w) => (
+        <p key={w} className="flex gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {w}
         </p>
-      ) : null}
+      ))}
       {r.source === "import" ? <p className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">Imported from the workbook&apos;s Paid column. There is no screenshot for it.</p> : null}
       {r.relatedExpense ? <p className="rounded-lg bg-info-soft px-3 py-2 text-sm text-info">Recorded automatically for an expense this household paid directly.</p> : null}
 
       <ProofViewer key={r.id} paymentId={r.id} hasProof={r.hasProof} />
+      {admin && r.hasProof && r.proofMime && READABLE_TYPES.includes(r.proofMime) ? (
+        <ScreenshotCheck key={`check-${r.id}`} paymentId={r.id} auto={r.status === "pending"} amountPaisa={r.amountPaisa} paidOn={r.paidOn} reference={r.reference} />
+      ) : null}
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         {facts.map(([k, v]) => (

@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { periodLabel, resolvePeriod } from "@/lib/periods";
 import { getContext, isAdmin, canSeeAllBalances } from "@/server/auth";
 import { getPayments, getReference, toPaisa } from "@/server/data/ledger";
+import { duplicateWarnings } from "@/lib/payments/duplicates";
 import { PaymentsBoard, type PaymentView } from "./payments-board";
 
 export const metadata: Metadata = { title: "Payments" };
@@ -31,21 +32,31 @@ async function Payments({ searchParams }: { searchParams: PageProps<"/payments">
   const q = str("q")?.trim().toLowerCase() ?? "";
   const page = Math.max(1, Number(str("page") ?? 1) || 1);
 
-  const all = await getPayments({ periodIds: period ? [period.id] : undefined, unitId: unit?.id });
+  const everything = await getPayments();
+  const all = everything.filter((p) => (!period || p.period_id === period.id) && (!unit || p.payer_unit_id === unit.id));
   const counts = {
     all: all.length,
     pending: all.filter((p) => p.status === "pending").length,
     approved: all.filter((p) => p.status === "approved").length,
     rejected: all.filter((p) => p.status === "rejected").length,
   };
-  const shaCount = new Map<string, number>();
-  for (const p of all) for (const a of p.payment_attachments) shaCount.set(a.sha256, (shaCount.get(a.sha256) ?? 0) + 1);
 
   const filtered = all
     .filter((p) => !status || p.status === status)
     .filter((p) => !q || p.reference?.toLowerCase().includes(q) || p.notes?.toLowerCase().includes(q));
   const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const code = (id: string) => ref.units.find((u) => u.id === id)?.code ?? "?";
+  const warnings = duplicateWarnings(
+    everything.map((p) => ({
+      id: p.id,
+      payerCode: code(p.payer_unit_id),
+      amount: p.amount,
+      paidOn: p.paid_on,
+      reference: p.reference,
+      status: p.status,
+      shas: p.payment_attachments.map((a) => a.sha256),
+    })),
+  );
 
   const rows: PaymentView[] = pageRows.map((p) => {
     const review = [...p.payment_reviews].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
@@ -65,7 +76,7 @@ async function Payments({ searchParams }: { searchParams: PageProps<"/payments">
       createdAt: p.created_at,
       hasProof: p.payment_attachments.length > 0,
       proofMime: p.payment_attachments[0]?.mime_type ?? null,
-      duplicateProof: p.payment_attachments.some((a) => (shaCount.get(a.sha256) ?? 0) > 1),
+      warnings: warnings.get(p.id) ?? [],
       reviewReason: review?.reason ?? null,
       reviewedAt: review?.created_at ?? null,
       periodLabel: per ? periodLabel(per, true) : "",
