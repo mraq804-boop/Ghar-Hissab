@@ -19,7 +19,7 @@ export type SpendingAlert = {
 
 const RS_1000: Paisa = 100_000n;
 
-function key(title: string) {
+export function itemKey(title: string) {
   return title.toLowerCase().replace(/\(.*?\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 }
 
@@ -42,7 +42,7 @@ export function spendingAlerts(current: AlertMonth, previous: AlertMonth[], dayO
   const seen = new Map<string, AlertExpense>();
   for (const e of current.expenses) {
     if (e.amountPaisa === null) continue;
-    const k = `${e.sectionKey}|${key(e.title)}|${e.amountPaisa}`;
+    const k = `${e.sectionKey}|${itemKey(e.title)}|${e.amountPaisa}`;
     if (seen.has(k)) {
       alerts.push({ kind: "duplicate", title: `${seen.get(k)!.title} ${formatPaisa(e.amountPaisa)} is entered twice`, detail: `Same item and amount appears twice in ${current.label}. Check it isn't a duplicate.` });
     } else {
@@ -52,9 +52,9 @@ export function spendingAlerts(current: AlertMonth, previous: AlertMonth[], dayO
 
   if (recent.length) {
     const lastRate = new Map<string, Paisa>();
-    for (const e of recent[0].expenses) if (e.ratePaisa) lastRate.set(key(e.title), e.ratePaisa);
+    for (const e of recent[0].expenses) if (e.ratePaisa) lastRate.set(itemKey(e.title), e.ratePaisa);
     for (const e of current.expenses) {
-      const before = e.ratePaisa ? lastRate.get(key(e.title)) : undefined;
+      const before = e.ratePaisa ? lastRate.get(itemKey(e.title)) : undefined;
       if (!e.ratePaisa || !before) continue;
       const up = percentUp(e.ratePaisa, before);
       if (up >= 15) alerts.push({ kind: "rate_up", title: `${e.title} rate up ${up}%`, detail: `${formatPaisa(e.ratePaisa)} per kg now, ${formatPaisa(before)} in ${recent[0].label}.` });
@@ -63,13 +63,13 @@ export function spendingAlerts(current: AlertMonth, previous: AlertMonth[], dayO
     const pastByItem = new Map<string, Paisa[]>();
     for (const m of recent) {
       const totals = new Map<string, Paisa>();
-      for (const e of m.expenses) if (e.amountPaisa !== null) totals.set(key(e.title), (totals.get(key(e.title)) ?? 0n) + e.amountPaisa);
+      for (const e of m.expenses) if (e.amountPaisa !== null) totals.set(itemKey(e.title), (totals.get(itemKey(e.title)) ?? 0n) + e.amountPaisa);
       for (const [k, v] of totals) pastByItem.set(k, [...(pastByItem.get(k) ?? []), v]);
     }
     const nowByItem = new Map<string, { title: string; total: Paisa }>();
     for (const e of current.expenses) {
       if (e.amountPaisa === null) continue;
-      const k = key(e.title);
+      const k = itemKey(e.title);
       nowByItem.set(k, { title: e.title, total: (nowByItem.get(k)?.total ?? 0n) + e.amountPaisa });
     }
     const flaggedItems = new Set<string>();
@@ -92,7 +92,7 @@ export function spendingAlerts(current: AlertMonth, previous: AlertMonth[], dayO
       if (e.amountPaisa === null) continue;
       const c = nowByCategory.get(e.categoryKey) ?? { name: e.categoryName, total: 0n, items: new Set<string>() };
       c.total += e.amountPaisa;
-      c.items.add(key(e.title));
+      c.items.add(itemKey(e.title));
       nowByCategory.set(e.categoryKey, c);
     }
     for (const [k, c] of nowByCategory) {
@@ -105,11 +105,11 @@ export function spendingAlerts(current: AlertMonth, previous: AlertMonth[], dayO
 
     const late = dayOfMonth === null || dayOfMonth >= 10;
     if (late) {
-      const present = new Set(current.expenses.map((e) => key(e.title)));
+      const present = new Set(current.expenses.map((e) => itemKey(e.title)));
       const counted = new Map<string, { e: AlertExpense; months: number }>();
       for (const m of recent) {
         const inMonth = new Map<string, AlertExpense>();
-        for (const e of m.expenses) if (e.amountPaisa !== null) inMonth.set(key(e.title), e);
+        for (const e of m.expenses) if (e.amountPaisa !== null) inMonth.set(itemKey(e.title), e);
         for (const [k, e] of inMonth) counted.set(k, { e: counted.get(k)?.e ?? e, months: (counted.get(k)?.months ?? 0) + 1 });
       }
       for (const [k, { e, months }] of counted) {
@@ -119,7 +119,7 @@ export function spendingAlerts(current: AlertMonth, previous: AlertMonth[], dayO
         alerts.push({
           kind: "missing",
           title: e.sectionKey === "BILLS" ? `${e.title} bill not entered yet` : `No ${e.title} entered this month`,
-          detail: `It was ${formatPaisa(e.amountPaisa!)} in ${recent.find((m) => m.expenses.some((x) => key(x.title) === k))?.label}.`,
+          detail: `It was ${formatPaisa(e.amountPaisa!)} in ${recent.find((m) => m.expenses.some((x) => itemKey(x.title) === k))?.label}.`,
         });
       }
     }

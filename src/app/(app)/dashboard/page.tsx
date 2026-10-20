@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { format } from "date-fns";
-import { AlertTriangle, CalendarClock, CalendarPlus, Clock3, Copy, FileWarning, Receipt, TrendingUp, Wallet } from "lucide-react";
+import { AlertTriangle, CalendarClock, Telescope, CalendarPlus, Clock3, Copy, FileWarning, Receipt, TrendingUp, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Money } from "@/components/ledger/money";
@@ -158,6 +158,55 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
           })}
         </div>
       </section>
+
+      {d.forecast ? (
+        <Panel
+          title="Month-end forecast"
+          description={`Recorded so far plus regular items not entered yet, at their usual amounts`}
+        >
+          <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+            <div>
+              <p className="flex items-center gap-2 text-sm text-muted-foreground"><Telescope className="size-4" /> Likely to end near</p>
+              <p className="num mt-1 font-heading text-3xl font-bold">{formatPaisa(d.forecast.projectedPaisa)}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                <span className="num">{formatPaisa(d.forecast.recordedPaisa)}</span> recorded,
+                about <span className="num">{formatPaisa(d.forecast.projectedPaisa - d.forecast.recordedPaisa)}</span> still to come.
+              </p>
+              <dl className="mt-4 space-y-1.5 text-sm">
+                {d.forecast.units.map((u) => (
+                  <div key={u.unitId} className="flex items-baseline justify-between gap-3">
+                    <dt className="font-semibold">{u.code}</dt>
+                    <dd className="text-right">
+                      share about <Money paisa={u.projectedSharePaisa} className="font-medium" />
+                      {u.projectedBalancePaisa < -50n ? (
+                        <span className="text-muted-foreground">, <Money paisa={-u.projectedBalancePaisa} /> left to pay</span>
+                      ) : null}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+            <div className="rounded-xl bg-muted/40 p-4">
+              <p className="text-sm font-medium">Still expected this month</p>
+              <ul className="mt-2 space-y-1.5 text-sm">
+                {d.forecast.expected.map((x) => (
+                  <li key={x.title} className="flex justify-between gap-3">
+                    <span>{x.title} <span className="text-xs text-muted-foreground">({x.basedOn})</span></span>
+                    <span className="num shrink-0">~{formatPaisa(x.amountPaisa)}</span>
+                  </li>
+                ))}
+                {d.forecast.unknown.map((t) => (
+                  <li key={t} className="flex justify-between gap-3 text-muted-foreground">
+                    <span>{t}</span>
+                    <span className="shrink-0 text-xs">no earlier amount</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-xs text-muted-foreground">An estimate from earlier months. Real amounts replace it as they are entered.</p>
+            </div>
+          </div>
+        </Panel>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Panel

@@ -3,7 +3,8 @@ import { allocateExpense, paisaToNumber, type Paisa, type UnitSettlement } from 
 import { periodLabel, resolvePeriod, type Period } from "@/lib/periods";
 import { canSeeAllBalances, getContext } from "@/server/auth";
 import { spendingAlerts, type AlertMonth } from "@/lib/smart/alerts";
-import { getPeriodLedgers, getReference, toExpenseInput, toPaisa, unitRefs, type PaymentRow, type PeriodLedger } from "./ledger";
+import { forecastMonth, type ForecastMonth } from "@/lib/smart/forecast";
+import { expenseSpec, getPeriodLedgers, getReference, toExpenseInput, toPaisa, unitRefs, type PaymentRow, type PeriodLedger } from "./ledger";
 
 export type DashboardFilters = { m?: string; unit?: string; cat?: string };
 
@@ -93,6 +94,24 @@ export async function getDashboard(filters: DashboardFilters) {
       ? spendingAlerts(toAlertMonth(current), ledgers.slice(0, -1).reverse().map(toAlertMonth), isCurrentMonth ? td : null)
       : [];
 
+  const toForecastMonth = (l: PeriodLedger): ForecastMonth => ({
+    label: periodLabel(l.period),
+    items: l.expenses.map((e) => ({
+      title: e.title,
+      sectionKey: ref.sections.find((s) => s.id === e.section_id)?.key ?? "",
+      amountPaisa: toPaisa(e.amount),
+      split: expenseSpec(e, ref.rules),
+    })),
+  });
+  const forecast = isCurrentMonth
+    ? forecastMonth({
+        units,
+        current: toForecastMonth(current),
+        previous: ledgers.slice(0, -1).reverse().map(toForecastMonth),
+        payments: current.payments.filter((p) => p.status === "approved").map((p) => ({ unitId: p.payer_unit_id, amountPaisa: toPaisa(p.amount)! })),
+      })
+    : null;
+
   const recentPayments = current.payments
     .filter((p) => !unitFilter || p.payer_unit_id === unitFilter.id)
     .slice(0, 6);
@@ -119,6 +138,7 @@ export async function getDashboard(filters: DashboardFilters) {
     trend,
     overdue,
     alerts,
+    forecast: forecast && { ...forecast, units: forecast.units.filter((u) => seeAll || u.unitId === ctx.unitId) },
     billsNotIssued: current.expenses.filter((e) => e.amount === null).map((e) => e.title),
     recentPayments: recentPayments as PaymentRow[],
   };

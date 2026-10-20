@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Field } from "@/components/ledger/field";
+import { VoiceButton } from "@/components/ledger/voice-button";
 import { formatPaisa, parseRupeesToPaisa } from "@/lib/finance/money";
 import { previewSplit } from "@/lib/finance/expense-preview";
 import type { RuleRow } from "@/lib/finance/rules";
@@ -223,14 +224,23 @@ export function ExpenseForm({
       </div>
 
       <Field label="Item" htmlFor="title" error={err("title")}>
-        <Input
-          id="title"
-          className="h-10"
-          placeholder={initial?.id ? "e.g. Oil, Wapda bill, Maid" : "e.g. Chicken 2kg, Doodh 12000, Wapda"}
-          autoComplete="off"
-          aria-invalid={!!err("title")}
-          {...register("title", { required: "Give the expense a name" })}
-        />
+        <div className="relative">
+          <Input
+            id="title"
+            className="h-10 pr-11"
+            placeholder={initial?.id ? "e.g. Oil, Wapda bill, Maid" : "e.g. Chicken 2kg, Doodh 12000, Wapda"}
+            autoComplete="off"
+            aria-invalid={!!err("title")}
+            {...register("title", { required: "Give the expense a name" })}
+          />
+          <VoiceButton
+            className="absolute top-1 right-1"
+            onText={(text) => {
+              setHandledTitle(null);
+              setValue("title", text, { shouldValidate: formState.isSubmitted });
+            }}
+          />
+        </div>
       </Field>
       {showSuggestion ? (
         <SuggestionCard

@@ -41,6 +41,14 @@ describe("parseQuickEntry", () => {
     expect(parseQuickEntry("Rs 450 Capri")).toMatchObject({ name: "Capri", amount: "450" });
   });
 
+  it("understands spoken amounts", () => {
+    expect(parseQuickEntry("doodh 12 hazaar")).toMatchObject({ name: "Doodh", amount: "12000" });
+    expect(parseQuickEntry("milk 12 thousand rupees")).toMatchObject({ name: "Milk", amount: "12000" });
+    expect(parseQuickEntry("oil ₹9,000")).toMatchObject({ name: "Oil", amount: "9000" });
+    expect(parseQuickEntry("maid 8k")).toMatchObject({ name: "Maid", amount: "8000" });
+    expect(parseQuickEntry("chicken 2 kg")).toMatchObject({ qty: "2", amount: null });
+  });
+
   it("keeps the name as typed when it has capitals", () => {
     expect(parseQuickEntry("Garam Masala").name).toBe("Garam Masala");
   });
@@ -58,8 +66,9 @@ describe("suggestExpense", () => {
     expect(suggestExpense("surf", history, categories)).toMatchObject({ splitRuleId: "sarf" });
   });
 
-  it("tolerates small typing mistakes", () => {
-    expect(suggestExpense("chiken", history, categories)?.categoryId).toBe("meat");
+  it("tolerates small typing mistakes and uses the name already in the ledger", () => {
+    expect(suggestExpense("chiken 2kg", history, categories)).toMatchObject({ title: "Chicken", categoryId: "meat", qty: "2" });
+    expect(suggestExpense("bijli", history, categories)?.title).toBe("Wapda (electricity)");
   });
 
   it("falls back to a category when the item is new", () => {

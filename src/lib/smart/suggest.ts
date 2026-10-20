@@ -110,7 +110,10 @@ function trimNumber(n: number) {
 
 /** Splits "chicken 2kg" or "doodh 3000" into a name, a quantity and an amount. */
 export function parseQuickEntry(text: string): QuickEntry {
-  let rest = ` ${text} `;
+  let rest = ` ${text} `
+    .replace(/₹/g, " rs ")
+    .replace(/(\d+(?:\.\d+)?)\s*(lakh|lac)\b/gi, (_, n: string) => ` ${Math.round(Number(n) * 100000)} `)
+    .replace(/(\d+(?:\.\d+)?)\s*(k|thousand|hazar|hazaar|hajar)\b/gi, (_, n: string) => ` ${Math.round(Number(n) * 1000)} `);
   let qty: string | null = null;
   let qtyLabel: string | null = null;
   let amount: string | null = null;
@@ -185,7 +188,7 @@ export function suggestExpense(text: string, history: HistoryItem[], categories:
     const byRate = h.rate !== null && entry.amount === null;
     return {
       source: "history",
-      title: best.score === 1 || entry.name.length < 3 ? h.title : entry.name,
+      title: h.title,
       categoryId: h.categoryId,
       sectionId: h.sectionId,
       splitRuleId: h.splitRuleId,
