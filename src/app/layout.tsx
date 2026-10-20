@@ -3,6 +3,8 @@ import { Bricolage_Grotesque, Figtree } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { OfflineBanner } from "@/components/pwa/offline-banner";
+import { PwaRegister } from "@/components/pwa/pwa-register";
 import "./globals.css";
 
 const figtree = Figtree({ variable: "--font-figtree", subsets: ["latin"] });
@@ -12,6 +14,9 @@ export const metadata: Metadata = {
   title: { default: "Ghar Hisaab", template: "%s · Ghar Hisaab" },
   description: "Shared household expenses, payments and settlements for the family home.",
   robots: { index: false, follow: false },
+  applicationName: "Ghar Hisaab",
+  appleWebApp: { capable: true, title: "Ghar Hisaab", statusBarStyle: "default" },
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {
@@ -31,6 +36,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
           <Toaster richColors position="top-center" />
+          <OfflineBanner />
+          <PwaRegister />
         </ThemeProvider>
       </body>
     </html>

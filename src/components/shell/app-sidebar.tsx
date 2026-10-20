@@ -19,6 +19,7 @@ import {
 import { NAV } from "./nav";
 import { usePeriodHref } from "./use-period-href";
 import { signOut } from "@/app/(auth)/actions";
+import { InstallAppItem } from "@/components/pwa/install-app";
 
 export type ShellUser = {
   name: string;
@@ -84,6 +85,13 @@ function SidebarBody({ user, hrefFor }: { user: ShellUser | null; hrefFor: (href
                   </SidebarMenuItem>
                 );
               })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup className="mt-auto">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <InstallAppItem />
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

@@ -19,6 +19,8 @@ const csp = [
   `frame-src ${supabase || "'none'"}`,
   "font-src 'self' data:",
   "object-src 'none'",
+  "worker-src 'self'",
+  "manifest-src 'self'",
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
@@ -29,6 +31,9 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   poweredByHeader: false,
   serverExternalPackages: ["@react-pdf/renderer", "exceljs"],
+  experimental: {
+    useOffline: true,
+  },
   turbopack: {
     rules: {
       "*.css": {
