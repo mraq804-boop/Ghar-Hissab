@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -11,9 +11,10 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Field } from "@/components/ledger/field";
-import { formatPaisa } from "@/lib/finance/money";
+import { formatPaisa, parseRupeesToPaisa } from "@/lib/finance/money";
 import { previewSplit } from "@/lib/finance/expense-preview";
 import type { RuleRow } from "@/lib/finance/rules";
+import { suggestExpense, type HistoryItem, type Suggestion } from "@/lib/smart/suggest";
 import type { ExpenseInputForm, SplitInput } from "@/lib/validation/expense";
 import { cn } from "@/lib/utils";
 import { saveExpense } from "./actions";
@@ -23,6 +24,7 @@ export type FormRef = {
   sections: { id: string; key: string; title: string }[];
   rules: (RuleRow & { name: string; description: string | null; active: boolean })[];
   categories: { id: string; name: string; section_id: string; default_split_rule_id: string | null; active: boolean }[];
+  history?: HistoryItem[];
 };
 
 type SplitMode = "rule" | "equal_units" | "percentage" | "custom_amounts";
@@ -62,6 +64,7 @@ export function ExpenseForm({
   const purse = refData.units.find((u) => u.is_purse_holder) ?? refData.units[0];
   const defaultRule = refData.rules.find((r) => r.type === "equal_units" && r.parts.length === refData.units.length) ?? refData.rules[0];
   const [pending, start] = useTransition();
+  const [handledTitle, setHandledTitle] = useState<string | null>(null);
 
   const form = useForm<FormValues>({
     defaultValues: {
@@ -103,6 +106,36 @@ export function ExpenseForm({
       }),
     [v, refData],
   );
+
+  const suggestion = useMemo(
+    () => (initial?.id ? null : suggestExpense(v.title ?? "", refData.history ?? [], refData.categories)),
+    [v.title, initial?.id, refData.history, refData.categories],
+  );
+  const showSuggestion = suggestion && handledTitle !== (v.title ?? "") && handledTitle !== suggestion.title;
+
+  const applySuggestion = (s: Suggestion) => {
+    setValue("title", s.title);
+    setValue("categoryId", s.categoryId);
+    setValue("sectionId", s.sectionId);
+    const o = s.splitOverride;
+    if (o && o.type !== "weights") {
+      setValue("splitMode", o.type as SplitMode);
+      if (o.type === "equal_units") setValue("equalUnits", o.unitIds ?? []);
+      if (o.type === "percentage") setValue("percents", Object.fromEntries((o.parts ?? []).map((p) => [p.unitId, String(p.percent ?? "")])));
+      if (o.type === "custom_amounts") setValue("customAmounts", Object.fromEntries((o.parts ?? []).map((p) => [p.unitId, (Number(p.amountPaisa ?? 0) / 100).toString()])));
+    } else if (s.splitRuleId) {
+      setValue("splitMode", "rule");
+      setValue("ruleId", s.splitRuleId);
+    }
+    setValue("pricing", s.pricing);
+    if (s.pricing === "rate") {
+      setValue("rate", s.rate ?? "");
+      if (s.qty) setValue("qty", s.qty);
+    }
+    if (s.amount) setValue("amount", s.amount);
+    if (s.qtyText) setValue("qtyText", s.qtyText);
+    setHandledTitle(s.title);
+  };
 
   const submit = handleSubmit((values) => {
     const payload: ExpenseInputForm = {
@@ -190,8 +223,24 @@ export function ExpenseForm({
       </div>
 
       <Field label="Item" htmlFor="title" error={err("title")}>
-        <Input id="title" className="h-10" placeholder="e.g. Oil, Wapda bill, Maid" aria-invalid={!!err("title")} {...register("title", { required: "Give the expense a name" })} />
+        <Input
+          id="title"
+          className="h-10"
+          placeholder={initial?.id ? "e.g. Oil, Wapda bill, Maid" : "e.g. Chicken 2kg, Doodh 12000, Wapda"}
+          autoComplete="off"
+          aria-invalid={!!err("title")}
+          {...register("title", { required: "Give the expense a name" })}
+        />
       </Field>
+      {showSuggestion ? (
+        <SuggestionCard
+          s={suggestion}
+          categoryName={refData.categories.find((c) => c.id === suggestion.categoryId)?.name ?? null}
+          ruleName={suggestion.splitOverride && suggestion.splitOverride.type !== "weights" ? "Same split as before" : (refData.rules.find((r) => r.id === suggestion.splitRuleId)?.name ?? null)}
+          onApply={() => applySuggestion(suggestion)}
+          onDismiss={() => setHandledTitle(v.title ?? "")}
+        />
+      ) : null}
 
       <div className="space-y-2">
         <span className="text-sm font-medium">How is it priced?</span>
@@ -361,5 +410,56 @@ export function ExpenseForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+function rupees(v: string) {
+  try {
+    return formatPaisa(parseRupeesToPaisa(String(Number(v))));
+  } catch {
+    return `Rs ${v}`;
+  }
+}
+
+function SuggestionCard({
+  s,
+  categoryName,
+  ruleName,
+  onApply,
+  onDismiss,
+}: {
+  s: Suggestion;
+  categoryName: string | null;
+  ruleName: string | null;
+  onApply: () => void;
+  onDismiss: () => void;
+}) {
+  const last = s.last
+    ? s.last.rate && s.last.qtyNum
+      ? `last time ${Number(s.last.qtyNum)} × ${rupees(s.last.rate)} (${s.last.periodLabel})`
+      : s.last.amount
+        ? `last time ${rupees(s.last.amount)} (${s.last.periodLabel})`
+        : null
+    : null;
+  const filling = [
+    s.pricing === "rate" && s.qty && s.rate ? `${s.qty} × ${rupees(s.rate)}` : null,
+    s.amount ? rupees(s.amount) : null,
+    s.qtyText && !s.amount ? s.qtyText : null,
+  ].filter(Boolean);
+  return (
+    <div role="status" className="-mt-2 flex items-start gap-3 rounded-lg border border-haldi/50 bg-accent/50 px-3 py-2.5 text-sm">
+      <Sparkles className="mt-0.5 size-4 shrink-0 text-haldi" />
+      <div className="min-w-0 flex-1">
+        <p className="font-medium">
+          {s.source === "history" ? "Looks like" : "Sounds like"} {s.title}
+          {filling.length ? <span className="num font-normal text-muted-foreground"> · {filling.join(", ")}</span> : null}
+        </p>
+        <p className="text-xs text-muted-foreground">{[categoryName, ruleName, last].filter(Boolean).join(" · ")}</p>
+      </div>
+      <Button type="button" size="sm" onClick={onApply}>Fill in</Button>
+      <button type="button" onClick={onDismiss} aria-label="Hide suggestion" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+        <X className="size-4" />
+      </button>
+    </div>
   );
 }

@@ -2,7 +2,8 @@ import "server-only";
 import { allocateExpense, paisaToNumber, type Paisa, type UnitSettlement } from "@/lib/finance";
 import { periodLabel, resolvePeriod, type Period } from "@/lib/periods";
 import { canSeeAllBalances, getContext } from "@/server/auth";
-import { getPeriodLedgers, getReference, toExpenseInput, toPaisa, unitRefs, type PaymentRow } from "./ledger";
+import { spendingAlerts, type AlertMonth } from "@/lib/smart/alerts";
+import { getPeriodLedgers, getReference, toExpenseInput, toPaisa, unitRefs, type PaymentRow, type PeriodLedger } from "./ledger";
 
 export type DashboardFilters = { m?: string; unit?: string; cat?: string };
 
@@ -73,6 +74,25 @@ export async function getDashboard(filters: DashboardFilters) {
     }
   }
 
+  const toAlertMonth = (l: PeriodLedger): AlertMonth => ({
+    label: periodLabel(l.period),
+    expenses: l.expenses.map((e) => ({
+      title: e.title,
+      sectionKey: ref.sections.find((s) => s.id === e.section_id)?.key ?? "",
+      categoryKey: e.category_id ?? e.section_id,
+      categoryName: categoryName(e.category_id, e.section_id),
+      amountPaisa: toPaisa(e.amount),
+      ratePaisa: toPaisa(e.rate),
+    })),
+  });
+  const [ty, tm, td] = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi" }).format(new Date()).split("-").map(Number);
+  const isCurrentMonth = period.year === ty && period.month === tm;
+  const isFutureMonth = period.year > ty || (period.year === ty && period.month > tm);
+  const alerts =
+    (ctx.role === "admin" || ctx.settings.membersSeeAllExpenses) && !isFutureMonth
+      ? spendingAlerts(toAlertMonth(current), ledgers.slice(0, -1).reverse().map(toAlertMonth), isCurrentMonth ? td : null)
+      : [];
+
   const recentPayments = current.payments
     .filter((p) => !unitFilter || p.payer_unit_id === unitFilter.id)
     .slice(0, 6);
@@ -98,6 +118,8 @@ export async function getDashboard(filters: DashboardFilters) {
     categories,
     trend,
     overdue,
+    alerts,
+    billsNotIssued: current.expenses.filter((e) => e.amount === null).map((e) => e.title),
     recentPayments: recentPayments as PaymentRow[],
   };
 }

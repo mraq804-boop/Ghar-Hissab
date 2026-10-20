@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { format } from "date-fns";
-import { AlertTriangle, CalendarPlus, Clock3, FileWarning, Receipt, Wallet } from "lucide-react";
+import { AlertTriangle, CalendarClock, CalendarPlus, Clock3, Copy, FileWarning, Receipt, TrendingUp, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Money } from "@/components/ledger/money";
@@ -16,6 +16,9 @@ import { getDashboard } from "@/server/data/dashboard";
 import { toPaisa } from "@/server/data/ledger";
 import { cn } from "@/lib/utils";
 import { methodLabel } from "@/lib/labels";
+import { publicEnv } from "@/lib/env";
+import { buildMonthSummary } from "@/lib/smart/summary";
+import { ShareSummary } from "@/components/ledger/share-summary";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -54,6 +57,17 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
       ? Math.round(((paisaToNumber(s.splitTotal) - paisaToNumber(d.previousSplitTotal)) / paisaToNumber(d.previousSplitTotal)) * 100)
       : null;
   const householdWord = s.units.length === 1 ? "household" : "households";
+  const summary = d.seeAll
+    ? buildMonthSummary({
+        monthLabel: periodLabel(d.period, true),
+        sharedPaisa: s.splitTotal,
+        purseCode: d.units.find((u) => u.is_purse_holder)?.code ?? null,
+        units: s.units,
+        billsNotIssued: d.billsNotIssued,
+        pendingPayments: d.pendingPayments,
+        link: `${publicEnv.NEXT_PUBLIC_SITE_URL}/division?m=${slug}`,
+      })
+    : null;
 
   return (
     <div className="space-y-6 md:space-y-8">
@@ -83,6 +97,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
             </p>
           </div>
           <div className="flex flex-wrap gap-2 lg:justify-end">
+            {summary ? <ShareSummary text={summary} monthLabel={periodLabel(d.period, true)} /> : null}
             <UrlSelect
               param="unit"
               label="Household"
@@ -181,12 +196,23 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
                 From {periodLabel(o.period, true)}
               </AttentionItem>
             ))}
+            {d.alerts.map((a) => (
+              <AttentionItem
+                key={a.title}
+                href={`/expenses?m=${slug}`}
+                icon={a.kind === "duplicate" ? Copy : a.kind === "missing" ? CalendarClock : TrendingUp}
+                tone={a.kind === "missing" ? "neutral" : "warning"}
+                title={a.title}
+              >
+                {a.detail}
+              </AttentionItem>
+            ))}
             {s.pendingBillCount > 0 ? (
               <AttentionItem href={`/expenses?m=${slug}`} icon={FileWarning} tone="neutral" title={`${s.pendingBillCount} bill${s.pendingBillCount === 1 ? "" : "s"} not issued yet`}>
                 Shares will change when the amounts are entered
               </AttentionItem>
             ) : null}
-            {d.pendingPayments === 0 && d.overdue.length === 0 && s.pendingBillCount === 0 ? (
+            {d.pendingPayments === 0 && d.overdue.length === 0 && d.alerts.length === 0 && s.pendingBillCount === 0 ? (
               <li className="px-5 py-8 text-center text-sm text-muted-foreground">Nothing needs attention right now.</li>
             ) : null}
           </ul>

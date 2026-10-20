@@ -11,7 +11,8 @@ import {
   type UnitRef,
 } from "@/lib/finance";
 import { getContext } from "@/server/auth";
-import type { Period } from "@/lib/periods";
+import { periodLabel, type Period } from "@/lib/periods";
+import type { HistoryItem } from "@/lib/smart/suggest";
 
 export type { Period } from "@/lib/periods";
 
@@ -157,6 +158,30 @@ export async function getPayments(
   const { data, error } = await q;
   if (error) throw error;
   return data as unknown as PaymentRow[];
+}
+
+/** Expenses from the most recent months, newest first, for suggesting categories and prices. */
+export async function getExpenseHistory(periods: Period[], months = 6): Promise<HistoryItem[]> {
+  const recent = [...periods].sort((a, b) => b.year - a.year || b.month - a.month).slice(0, months);
+  const rows = await getExpenses(recent.map((p) => p.id));
+  const order = new Map(recent.map((p, i) => [p.id, i]));
+  return rows
+    .sort((a, b) => (order.get(a.period_id) ?? 0) - (order.get(b.period_id) ?? 0) || b.updated_at.localeCompare(a.updated_at))
+    .map((e) => {
+      const p = recent[order.get(e.period_id) ?? 0];
+      return {
+        title: e.title,
+        categoryId: e.category_id,
+        sectionId: e.section_id,
+        splitRuleId: e.split_rule_id,
+        splitOverride: e.split_override as HistoryItem["splitOverride"],
+        amount: e.amount,
+        rate: e.rate,
+        qtyNum: e.qty_num,
+        qtyText: e.qty_text,
+        periodLabel: periodLabel(p),
+      };
+    });
 }
 
 export type PeriodLedger = {

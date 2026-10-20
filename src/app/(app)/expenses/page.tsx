@@ -6,7 +6,7 @@ import { EmptyState, PageHeader } from "@/components/ledger/page-header";
 import { allocateExpense, describeSpec } from "@/lib/finance";
 import { periodLabel, resolvePeriod } from "@/lib/periods";
 import { getContext, isAdmin } from "@/server/auth";
-import { expenseSpec, getPeriodLedgers, getReference, toExpenseInput, toPaisa, unitRefs } from "@/server/data/ledger";
+import { expenseSpec, getExpenseHistory, getPeriodLedgers, getReference, toExpenseInput, toPaisa, unitRefs } from "@/server/data/ledger";
 import { getConnection, getScopeStates, recordStatus } from "@/server/data/sync";
 import { ExpenseBoard, type ExpenseView } from "./expense-board";
 import { StartMonth } from "./start-month";
@@ -46,7 +46,12 @@ async function Expenses({ searchParams }: { searchParams: PageProps<"/expenses">
     );
   }
 
-  const [[ledger], states, connection] = await Promise.all([getPeriodLedgers([period]), getScopeStates(), admin ? getConnection() : null]);
+  const [[ledger], states, connection, history] = await Promise.all([
+    getPeriodLedgers([period]),
+    getScopeStates(),
+    admin ? getConnection() : null,
+    admin ? getExpenseHistory(ref.periods) : [],
+  ]);
   const connected = Boolean(connection?.has_token && connection.item_id);
   const scopeState = states.find((s) => s.scope === `period:${period.id}`);
   const units = unitRefs(ref.units);
@@ -94,6 +99,7 @@ async function Expenses({ searchParams }: { searchParams: PageProps<"/expenses">
         sections: ref.sections.map((s) => ({ id: s.id, key: s.key, title: s.title })),
         rules: ref.rules.map((r) => ({ id: r.id, type: r.type, name: r.name, description: r.description, active: r.active, parts: r.parts })),
         categories: ref.categories,
+        history,
       }}
       openNew={sp.new === "1"}
     />
