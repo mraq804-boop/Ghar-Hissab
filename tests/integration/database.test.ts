@@ -143,13 +143,55 @@ describe("expenses", () => {
     );
   });
 
-  it("expense paid by a non-purse unit creates a pending contribution", async () => {
-    const [row] = await rpc<{ id: string }>(ADMIN, `select * from public.upsert_expense($1)`, [
-      JSON.stringify({ household_id: ids.householdId, period_id: periodId, section_id: ids.sections.BILLS, title: "Internet", amount: "2200", split_rule_id: ids.rules.POOL3, paid_by_unit_id: ids.units.AK }),
+  it("an expense paid directly by another household sends a pending payment for approval that follows the expense", async () => {
+    const base = { household_id: ids.householdId, period_id: periodId, section_id: ids.sections.BILLS, title: "Gas", split_rule_id: ids.rules.POOL3 };
+    const linked = (id: string) =>
+      db.query<{ id: string; status: string; amount: string; payer: string; version: number }>(
+        `select p.id, p.status, p.amount::text, u.code as payer, p.version from public.payments p join public.units u on u.id = p.payer_unit_id where p.related_expense_id = $1`,
+        [id],
+      );
+    const pick = (rows: { status: string; amount: string; payer: string }[]) => rows.map(({ status, amount, payer }) => ({ status, amount, payer }));
+
+    const imported = await rpc<{ id: string; version: number }>(ADMIN, `select * from public.upsert_expense($1)`, [
+      JSON.stringify({ ...base, title: "Wapda", amount: "" }),
     ]);
-    const pay = await db.query<{ status: string; amount: string }>(
-      `select status, amount::text from public.payments where related_expense_id = $1`, [row.id]);
-    expect(pay.rows).toEqual([{ status: "pending", amount: "2200.00" }]);
+    const [wapda] = await rpc<{ id: string; version: number }>(ADMIN, `select * from public.upsert_expense($1)`, [
+      JSON.stringify({ ...base, title: "Wapda", id: imported[0].id, expected_version: imported[0].version, amount: "10575", paid_by_unit_id: ids.units.AB }),
+    ]);
+    expect(pick((await linked(wapda.id)).rows)).toEqual([{ status: "pending", amount: "10575.00", payer: "AB" }]);
+
+    const [row] = await rpc<{ id: string; version: number }>(ADMIN, `select * from public.upsert_expense($1)`, [
+      JSON.stringify({ ...base, amount: "8730", paid_by_unit_id: ids.units.AB }),
+    ]);
+    const [created] = (await linked(row.id)).rows;
+    expect(pick([created])).toEqual([{ status: "pending", amount: "8730.00", payer: "AB" }]);
+
+    await rpc(ADMIN, `select * from public.review_payment($1, 'approved', $2)`, [created.id, created.version]);
+    const [sameAgain] = await rpc<{ id: string; version: number }>(ADMIN, `select * from public.upsert_expense($1)`, [
+      JSON.stringify({ ...base, id: row.id, expected_version: row.version, amount: "8730", paid_by_unit_id: ids.units.AB, notes: "receipt filed" }),
+    ]);
+    expect(pick((await linked(row.id)).rows)).toEqual([{ status: "approved", amount: "8730.00", payer: "AB" }]);
+
+    const [v2] = await rpc<{ id: string; version: number }>(ADMIN, `select * from public.upsert_expense($1)`, [
+      JSON.stringify({ ...base, id: row.id, expected_version: sameAgain.version, amount: "9000", paid_by_unit_id: ids.units.AK }),
+    ]);
+    expect(pick((await linked(row.id)).rows)).toEqual([{ status: "pending", amount: "9000.00", payer: "AK" }]);
+
+    const [v3] = await rpc<{ id: string; version: number }>(ADMIN, `select * from public.upsert_expense($1)`, [
+      JSON.stringify({ ...base, id: row.id, expected_version: v2.version, amount: "9000", paid_by_unit_id: ids.units.AQ }),
+    ]);
+    expect((await linked(row.id)).rows).toEqual([]);
+
+    const [v4] = await rpc<{ id: string; version: number }>(ADMIN, `select * from public.upsert_expense($1)`, [
+      JSON.stringify({ ...base, id: row.id, expected_version: v3.version, amount: "9000", paid_by_unit_id: ids.units.AB }),
+    ]);
+    expect((await linked(row.id)).rows).toHaveLength(1);
+    await rpc(ADMIN, `select public.delete_expense($1, $2)`, [row.id, v4.version]);
+    expect((await linked(row.id)).rows).toEqual([]);
+  });
+
+  it("members cannot trigger direct-payment syncing themselves", async () => {
+    await expectDbError(rpc(AK_USER, `select public.sync_direct_payment($1)`, [periodId]), /permission denied/);
   });
 
   it("closed periods are read-only", async () => {

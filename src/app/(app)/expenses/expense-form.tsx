@@ -328,7 +328,7 @@ export function ExpenseForm({
       </fieldset>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Paid by" htmlFor="paidByUnitId" hint="If not the purse-holder, a contribution is recorded for them to verify.">
+        <Field label="Paid by" htmlFor="paidByUnitId" hint="If not the purse-holder, a payment from that household is sent to Payments for you to approve.">
           <Controller
             control={control}
             name="paidByUnitId"
