@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { format } from "date-fns";
-import { AlertTriangle, CalendarClock, Telescope, Zap, CalendarPlus, Clock3, Copy, FileWarning, Receipt, TrendingUp, Wallet } from "lucide-react";
+import { AlertTriangle, BellRing, CalendarClock, Gauge, Telescope, Zap, CalendarPlus, Clock3, Copy, FileWarning, Receipt, TrendingUp, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Money } from "@/components/ledger/money";
@@ -71,6 +71,13 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
 
   return (
     <div className="space-y-6 md:space-y-8">
+      {d.suggestPush ? (
+        <Link href="/notifications" className="flex items-center gap-3 rounded-2xl border border-haldi/40 bg-accent/40 px-4 py-3 text-sm hover:bg-accent/60">
+          <BellRing className="size-5 shrink-0 text-haldi" />
+          <span className="flex-1"><strong>Turn on notifications</strong> to get bill due dates, payment approvals, meter warnings and reminders on this phone.</span>
+          <span className="text-primary">Set up</span>
+        </Link>
+      ) : null}
       <section aria-labelledby="statement" className="relative">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-3xl">
@@ -245,6 +252,11 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
                 From {periodLabel(o.period, true)}
               </AttentionItem>
             ))}
+            {d.meterNotices.map((m) => (
+              <AttentionItem key={`meter-${m.meterId}`} href="/bills" icon={Gauge} tone={m.kind === "reminder" ? "neutral" : m.kind === "watch" ? "warning" : "danger"} title={m.title}>
+                {m.detail}
+              </AttentionItem>
+            ))}
             {d.billNotices.map((b) => (
               <AttentionItem
                 key={`${b.kind}-${b.id}`}
@@ -274,7 +286,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
                 Shares will change when the amounts are entered
               </AttentionItem>
             ) : null}
-            {d.pendingPayments === 0 && d.overdue.length === 0 && d.alerts.length === 0 && d.billNotices.length === 0 && s.pendingBillCount === 0 ? (
+            {d.pendingPayments === 0 && d.overdue.length === 0 && d.alerts.length === 0 && d.billNotices.length === 0 && d.meterNotices.length === 0 && s.pendingBillCount === 0 ? (
               <li className="px-5 py-8 text-center text-sm text-muted-foreground">Nothing needs attention right now.</li>
             ) : null}
           </ul>

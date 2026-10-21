@@ -48,7 +48,7 @@ export type PersonalView = {
 const rs = (n: number) => `Rs ${Math.round(n).toLocaleString("en-US")}`;
 const dayLabel = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 
-const TONE: Record<BudgetStatus["state"], string> = { ok: "bg-chart-2", pace: "bg-warning", near: "bg-warning", over: "bg-destructive" };
+const TONE: Record<BudgetStatus["state"], string> = { ok: "bg-success", pace: "bg-warning", near: "bg-warning", over: "bg-destructive" };
 
 function budgetLine(b: Budget) {
   if (b.state === "over") return `${rs(b.spent - b.budget)} over the ${rs(b.budget)} budget`;
@@ -204,12 +204,12 @@ export function PersonalBoard({ view }: { view: PersonalView }) {
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
-            router.refresh();
+            start(() => router.refresh());
           }}
         />
       ) : null}
-      {budgetsOpen ? <BudgetsDialog view={view} onClose={() => { setBudgetsOpen(false); router.refresh(); }} /> : null}
-      {categoriesOpen ? <CategoriesDialog categories={view.categories} onClose={() => { setCategoriesOpen(false); router.refresh(); }} /> : null}
+      {budgetsOpen ? <BudgetsDialog view={view} onClose={() => { setBudgetsOpen(false); start(() => router.refresh()); }} /> : null}
+      {categoriesOpen ? <CategoriesDialog categories={view.categories} onClose={() => { setCategoriesOpen(false); start(() => router.refresh()); }} /> : null}
     </div>
   );
 }

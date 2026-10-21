@@ -23,6 +23,12 @@ describe("parseLescoBill", () => {
           { until: "2026-12-03", amount: 12725 },
           { until: null, amount: 13105 },
         ],
+        previousReading: 1200,
+        presentReading: 1602,
+        history: [
+          { month: "2026-09", units: 198, bill: 4210, payment: 4210 },
+          { month: "2026-10", units: 231, bill: 9880, payment: null },
+        ],
       },
     });
   });

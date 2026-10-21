@@ -34,6 +34,40 @@ self.addEventListener("message", (event) => {
   if (event.data === "SKIP_WAITING") self.skipWaiting();
 });
 
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: "Ghar Hisaab", body: event.data ? event.data.text() : "" };
+  }
+  const url = typeof data.url === "string" && data.url.startsWith("/") ? data.url : "/dashboard";
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Ghar Hisaab", {
+      body: data.body || "",
+      icon: "/icons/192",
+      badge: "/icons/192",
+      tag: data.tag || undefined,
+      data: { url },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL((event.notification.data && event.notification.data.url) || "/dashboard", self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      for (const w of windows) {
+        if (new URL(w.url).origin === self.location.origin && "focus" in w) {
+          return w.focus().then((c) => (c && "navigate" in c ? c.navigate(target) : undefined));
+        }
+      }
+      return self.clients.openWindow(target);
+    }),
+  );
+});
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;

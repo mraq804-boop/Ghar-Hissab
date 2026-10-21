@@ -4,6 +4,7 @@ import { periodLabel, resolvePeriod, type Period } from "@/lib/periods";
 import { canSeeAllBalances, getContext } from "@/server/auth";
 import { spendingAlerts, type AlertMonth } from "@/lib/smart/alerts";
 import { forecastMonth, type ForecastMonth } from "@/lib/smart/forecast";
+import { getMeterWatches } from "./meter-watch";
 import { expenseSpec, getPeriodLedgers, getReference, toExpenseInput, toPaisa, unitRefs, type PaymentRow, type PeriodLedger } from "./ledger";
 
 export type DashboardFilters = { m?: string; unit?: string; cat?: string };
@@ -128,6 +129,39 @@ export async function getDashboard(filters: DashboardFilters) {
     return out;
   });
 
+  type MeterNotice = { meterId: string; kind: "check" | "over" | "watch" | "reminder"; title: string; detail: string };
+  const meterNotices: MeterNotice[] = isCurrentMonth
+    ? (await getMeterWatches()).flatMap((w): MeterNotice[] => {
+        if (w.problem || w.level === "over" || w.level === "watch") {
+          const title = w.problem
+            ? `${w.label}: check the last meter reading`
+            : w.used !== null && w.used >= w.limit
+              ? `${w.label} is over ${w.limit} units`
+              : `${w.label} heading for ${w.projected ?? w.used} units`;
+          const detail = w.problem
+            ? "It's lower than LESCO's reading."
+            : w.allowancePerDay !== null && (w.used ?? 0) < w.limit
+              ? `Keep to about ${w.allowancePerDay} units a day to stay under ${w.limit}.`
+              : `${w.used} units used since LESCO's reading.`;
+          const kind = w.problem ? ("check" as const) : w.level === "over" ? ("over" as const) : ("watch" as const);
+          return [{ meterId: w.meterId, kind, title, detail }];
+        }
+        if (w.stale && w.daysLeft > 2) {
+          return [
+            {
+              meterId: w.meterId,
+              kind: "reminder" as const,
+              title: `Read the ${w.label} meter`,
+              detail: w.latestAt ? "No reading for over a week." : `No reading yet since LESCO read ${w.baseline}.`,
+            },
+          ];
+        }
+        return [];
+      })
+    : [];
+
+  const { count: pushDevices, error: pushError } = await ctx.supabase.from("push_subscriptions").select("id", { count: "exact", head: true });
+
   const recentPayments = current.payments
     .filter((p) => !unitFilter || p.payer_unit_id === unitFilter.id)
     .slice(0, 6);
@@ -155,6 +189,8 @@ export async function getDashboard(filters: DashboardFilters) {
     overdue,
     alerts,
     billNotices,
+    meterNotices,
+    suggestPush: !pushError && (pushDevices ?? 0) === 0,
     forecast: forecast && { ...forecast, units: forecast.units.filter((u) => seeAll || u.unitId === ctx.unitId) },
     billsNotIssued: current.expenses.filter((e) => e.amount === null).map((e) => e.title),
     recentPayments: recentPayments as PaymentRow[],

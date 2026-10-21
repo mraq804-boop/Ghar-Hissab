@@ -38,6 +38,7 @@ export default function LoginPage({ searchParams }: PageProps<"/login">) {
           <Suspense fallback={<div className="mt-8 h-64 animate-pulse rounded-xl bg-muted" />}>
             <LoginFormSlot searchParams={searchParams} />
           </Suspense>
+          <p className="mt-10 text-center text-xs text-muted-foreground">© 2026 AQ. All rights reserved.</p>
         </div>
       </section>
     </div>

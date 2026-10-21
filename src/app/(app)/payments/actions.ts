@@ -7,6 +7,7 @@ import { paymentInputSchema, reviewSchema, sniffMime, type PaymentInputForm } fr
 import { getContext, isAdmin } from "@/server/auth";
 import { dbError, forbidden, invalid, type ActionResult } from "@/server/actions/result";
 import { kickSync } from "@/server/excel/kick";
+import { onPaymentReviewed, onPaymentSubmitted } from "@/server/notify/events";
 
 export async function submitPayment(input: PaymentInputForm): Promise<ActionResult<{ id: string; duplicateScreenshot: boolean; replayed: boolean }>> {
   const ctx = await getContext();
@@ -48,6 +49,7 @@ export async function submitPayment(input: PaymentInputForm): Promise<ActionResu
   if (error) return dbError(error);
   const row = (data as { id: string; duplicate_screenshot: boolean; replayed: boolean }[])[0];
   revalidatePath("/", "layout");
+  if (!row.replayed) onPaymentSubmitted(row.id);
   return {
     ok: true,
     data: { id: row.id, duplicateScreenshot: row.duplicate_screenshot, replayed: row.replayed },
@@ -70,6 +72,7 @@ export async function reviewPayment(input: z.input<typeof reviewSchema>): Promis
   const row = (data as { status: string; version: number }[])[0];
   revalidatePath("/", "layout");
   if (parsed.data.decision === "approved") kickSync();
+  onPaymentReviewed(parsed.data.paymentId);
   return { ok: true, data: row, message: parsed.data.decision === "approved" ? "Payment approved" : "Payment rejected" };
 }
 

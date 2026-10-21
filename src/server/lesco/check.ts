@@ -4,6 +4,7 @@ import { parseLescoBill, type LescoBill } from "@/lib/lesco/parse";
 import { billAssets, buildBillSnapshot } from "@/lib/lesco/snapshot";
 import { PROVIDERS, type Provider } from "@/lib/utilities/providers";
 import { readBillText } from "@/lib/utilities/read-bill-text";
+import { onBillArrived } from "@/server/notify/events";
 
 const UA = "Mozilla/5.0 (compatible; GharHisaab bill check; one request per meter per day)";
 const LESCO = "https://bill.pitc.com.pk";
@@ -152,6 +153,9 @@ async function fetchWasa(account: string): Promise<Fetched> {
       payable: read.payable,
       currentBill: null,
       latePayments: read.afterDue ? [{ until: null, amount: read.afterDue }] : [],
+      previousReading: null,
+      presentReading: null,
+      history: [],
     },
   };
 }
@@ -169,8 +173,8 @@ export async function checkMeter(db: SupabaseClient, meter: Meter): Promise<Chec
   const { bill, html, site } = fetched;
 
   const billMonth = `${bill.billMonth}-01`;
-  const { data: existing } = await db.from("utility_bills").select("id, payable, due_date").eq("meter_id", meter.id).eq("bill_month", billMonth).maybeSingle();
-  if (existing && Number(existing.payable) === bill.payable && existing.due_date === bill.dueDate) return finish({ status: "unchanged", bill });
+  const { data: existing } = await db.from("utility_bills").select("id, payable, due_date, present_reading").eq("meter_id", meter.id).eq("bill_month", billMonth).maybeSingle();
+  if (existing && Number(existing.payable) === bill.payable && existing.due_date === bill.dueDate && existing.present_reading === bill.presentReading) return finish({ status: "unchanged", bill });
 
   const { styles, images } = billAssets(html);
   const styleMap: Record<string, string> = {};
@@ -200,6 +204,9 @@ export async function checkMeter(db: SupabaseClient, meter: Meter): Promise<Chec
       payable: bill.payable,
       current_bill: bill.currentBill,
       late_payments: bill.latePayments,
+      previous_reading: bill.previousReading,
+      present_reading: bill.presentReading,
+      history: bill.history,
       snapshot_path: path,
       snapshot_mime: "text/html",
       source: "fetched",
@@ -208,6 +215,7 @@ export async function checkMeter(db: SupabaseClient, meter: Meter): Promise<Chec
     { onConflict: "meter_id,bill_month" },
   );
   if (saved.error) return finish({ status: "error", message: "The bill was read but couldn't be recorded. It will be tried again tomorrow." });
+  if (!existing) onBillArrived(meter.household_id, meter.id, bill.billMonth);
   return finish({ status: existing ? "unchanged" : "new", bill });
 }
 

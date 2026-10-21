@@ -37,7 +37,21 @@ export type ChatBill = {
   inExpenses: boolean;
 };
 
-export type ChatPersonal = { date: string; category: string; amountPaisa: Paisa }[];
+export type ChatMeter = {
+  label: string;
+  limit: number;
+  baseline: number;
+  baselineDate: string;
+  nextReadingDate: string;
+  latest: number | null;
+  latestAt: string | null;
+  used: number | null;
+  projected: number | null;
+  allowancePerDay: number | null;
+  history: { month: string; units: number }[];
+};
+
+export type ChatPersonal ={ date: string; category: string; amountPaisa: Paisa }[];
 
 export type ChatScope = { seeExpenses: boolean; seeAllBalances: boolean; ownUnit: string | null };
 
@@ -61,6 +75,7 @@ export function buildChatContext(input: {
   months: ChatMonth[];
   bills?: ChatBill[];
   personal?: ChatPersonal;
+  meters?: ChatMeter[];
   scope: ChatScope;
 }): string {
   const { scope } = input;
@@ -133,6 +148,17 @@ export function buildChatContext(input: {
     for (const b of input.bills) {
       const late = b.latePayments.map((l) => (l.until ? `${rs(l.amountPaisa)} until ${l.until}` : `${rs(l.amountPaisa)} after that`)).join(", ") || "-";
       lines.push([b.connection, b.company, b.utility, b.month, rs(b.payablePaisa), b.dueDate ?? "not known", late, b.units ?? "-", b.inExpenses ? "yes" : "no"].join(" | "));
+    }
+  }
+  if (input.meters?.length) {
+    lines.push("", "## Electricity meter watch (units this billing cycle, from family meter readings)");
+    for (const m of input.meters) {
+      const now =
+        m.used === null
+          ? "no family reading yet this cycle"
+          : `${m.used} units used (latest reading ${m.latest} on ${m.latestAt?.slice(0, 10)}), ${Math.max(0, m.limit - m.used)} units left before the limit${m.projected !== null ? `, projected ${m.projected} units by ${m.nextReadingDate}` : ""}${m.allowancePerDay !== null ? `, about ${m.allowancePerDay} units a day allowed to stay under` : ""}`;
+      lines.push(`${m.label}: limit ${m.limit} units a month. LESCO read ${m.baseline} on ${m.baselineDate}; next reading about ${m.nextReadingDate}. ${now}.`);
+      if (m.history.length) lines.push(`${m.label} units in recent months (from the bill): ${m.history.map((h) => `${h.month} ${h.units}`).join(", ")}.`);
     }
   }
   if (input.personal?.length) {

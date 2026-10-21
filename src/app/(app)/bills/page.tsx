@@ -5,6 +5,7 @@ import { Zap } from "lucide-react";
 import { EmptyState, PageHeader } from "@/components/ledger/page-header";
 import { getContext, isAdmin } from "@/server/auth";
 import { getReference } from "@/server/data/ledger";
+import { getMeterWatches } from "@/server/data/meter-watch";
 import { isProvider } from "@/lib/utilities/providers";
 import { BillsBoard, type BillView, type MeterView } from "./bills-board";
 
@@ -31,6 +32,7 @@ async function Bills() {
       .order("bill_month", { ascending: false })
       .limit(60),
   ]);
+  const watches = await getMeterWatches();
   const missing = [mErr, bErr].some((e) => ["42P01", "42703", "PGRST204", "PGRST205"].includes(e?.code ?? ""));
   if (missing) {
     return (
@@ -83,6 +85,8 @@ async function Bills() {
       <PageHeader title="Bills" description="Electricity, water and gas bills with a saved copy of each one. LESCO and WASA bills are fetched every day; SNGPL bills are uploaded." />
       <BillsBoard
         admin={admin}
+        householdId={ctx.householdId}
+        watches={watches}
         meters={meterViews}
         bills={billViews}
         today={new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi" }).format(new Date())}

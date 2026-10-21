@@ -467,3 +467,75 @@ describe("personal spending", () => {
     );
   });
 });
+
+describe("meter watch", () => {
+  let meterId: string;
+
+  it("every household member can add and see readings for the household's meters", async () => {
+    [{ id: meterId }] = await rpc<{ id: string }>(ADMIN, `select id from public.utility_meters where provider = 'lesco' limit 1`);
+    expect(await rpc(ADMIN, `select unit_limit from public.utility_meters where id = $1`, [meterId])).toEqual([{ unit_limit: 200 }]);
+    await rpc(AB_USER, `insert into public.meter_readings (household_id, meter_id, reading) values ($1, $2, 890)`, [ids.householdId, meterId]);
+    expect(await rpc(AK_USER, `select reading from public.meter_readings where meter_id = $1`, [meterId])).toEqual([{ reading: 890 }]);
+  });
+
+  it("outsiders can neither read nor add readings, and members can't record in someone else's name", async () => {
+    expect(await rpc(STRANGER, `select id from public.meter_readings`)).toEqual([]);
+    await expectDbError(rpc(STRANGER, `insert into public.meter_readings (household_id, meter_id, reading) values ($1, $2, 900)`, [ids.householdId, meterId]), /row-level security/);
+    await expectDbError(
+      rpc(AK_USER, `insert into public.meter_readings (household_id, meter_id, reading, recorded_by) values ($1, $2, 900, $3)`, [ids.householdId, meterId, AB_USER.sub]),
+      /row-level security/,
+    );
+  });
+
+  it("only the person who added a reading or an admin can remove it", async () => {
+    expect(await rpc(AK_USER, `delete from public.meter_readings where meter_id = $1 returning id`, [meterId])).toEqual([]);
+    expect((await rpc(AB_USER, `delete from public.meter_readings where meter_id = $1 returning id`, [meterId])).length).toBe(1);
+  });
+
+  it("stores bill readings and history", async () => {
+    const [b] = await rpc(
+      "service",
+      `insert into public.utility_bills (household_id, meter_id, bill_month, payable, previous_reading, present_reading, history)
+       values ($1, $2, '2026-12-01', 1, 778, 841, '[{"month":"2026-09","units":148}]') returning present_reading, history`,
+      [ids.householdId, meterId],
+    );
+    expect(b).toEqual({ present_reading: 841, history: [{ month: "2026-09", units: 148 }] });
+  });
+});
+
+describe("notifications and reminders", () => {
+  it("each person manages only their own devices and preferences", async () => {
+    await rpc(AK_USER, `insert into public.push_subscriptions (household_id, endpoint, p256dh, auth) values ($1, 'https://push.example/ak', 'k', 'a')`, [ids.householdId]);
+    await rpc(AK_USER, `insert into public.notification_prefs (quiet_start) values ('23:00')`);
+    for (const other of [ADMIN, AB_USER, STRANGER]) {
+      expect(await rpc(other, `select id from public.push_subscriptions`)).toEqual([]);
+      expect(await rpc(other, `select user_id from public.notification_prefs`)).toEqual([]);
+    }
+    await expectDbError(
+      rpc(STRANGER, `insert into public.push_subscriptions (household_id, endpoint, p256dh, auth) values ($1, 'https://push.example/x', 'k', 'a')`, [ids.householdId]),
+      /row-level security/,
+    );
+  });
+
+  it("notifications are written by the server and only their owner can read them or mark them read", async () => {
+    const [{ id }] = await rpc<{ id: string }>(
+      "service",
+      `insert into public.notifications (household_id, user_id, category, title, dedupe_key) values ($1, $2, 'payments', 'Approved', 'p1') returning id`,
+      [ids.householdId, AK_USER.sub],
+    );
+    expect(await rpc(ADMIN, `select id from public.notifications`)).toEqual([]);
+    await expectDbError(rpc(AK_USER, `insert into public.notifications (household_id, user_id, category, title, dedupe_key) values ($1, $2, 'payments', 'x', 'p2')`, [ids.householdId, AK_USER.sub]), /row-level security|permission denied/);
+    await expectDbError(rpc(AK_USER, `update public.notifications set title = 'changed' where id = $1`, [id]), /permission denied/);
+    expect(await rpc(AK_USER, `update public.notifications set read_at = now() where id = $1 returning id`, [id])).toEqual([{ id }]);
+  });
+
+  it("personal reminders stay private, family reminders are shared", async () => {
+    await rpc(AB_USER, `insert into public.reminders (household_id, title, next_at) values ($1, 'My dentist', now() + interval '1 day')`, [ids.householdId]);
+    await rpc(AB_USER, `insert into public.reminders (household_id, audience, title, next_at, repeat) values ($1, 'family', 'Pay maid', now() + interval '1 day', 'monthly')`, [ids.householdId]);
+    expect((await rpc<{ title: string }>(AK_USER, `select title from public.reminders`)).map((r) => r.title)).toEqual(["Pay maid"]);
+    expect((await rpc<{ title: string }>(ADMIN, `select title from public.reminders`)).map((r) => r.title)).toEqual(["Pay maid"]);
+    expect(await rpc(AK_USER, `delete from public.reminders where title = 'Pay maid' returning id`)).toEqual([]);
+    expect((await rpc(ADMIN, `delete from public.reminders where title = 'Pay maid' returning id`)).length).toBe(1);
+    expect(await rpc(STRANGER, `select id from public.reminders`)).toEqual([]);
+  });
+});

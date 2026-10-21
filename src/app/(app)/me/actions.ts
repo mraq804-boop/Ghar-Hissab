@@ -5,6 +5,7 @@ import { z } from "zod";
 import { parseRupeesToPaisa, paisaToDecimalString } from "@/lib/finance/money";
 import { getContext } from "@/server/auth";
 import { dbError, invalid, type ActionResult } from "@/server/actions/result";
+import { onPersonalSpending } from "@/server/notify/events";
 
 const amount = z
   .string()
@@ -58,6 +59,7 @@ export async function savePersonalExpense(input: z.input<typeof expenseSchema>):
   }
   const { error } = await ctx.supabase.from("personal_expenses").insert(row);
   if (error) return dbError(error);
+  onPersonalSpending(ctx.userId, ctx.householdId, v.spentOn);
   return done(`Added Rs ${Number(v.amount).toLocaleString("en-US")}`);
 }
 

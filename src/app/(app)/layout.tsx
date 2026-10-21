@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebarFallback } from "@/components/shell/app-sidebar";
 import { ThemeToggle } from "@/components/shell/theme-toggle";
-import { ShellCommandMenu, ShellSidebar, ShellTopbarData, ShellBottomNav } from "./shell-data";
+import { ShellBell, ShellCommandMenu, ShellSidebar, ShellTopbarData, ShellBottomNav } from "./shell-data";
 
 export default function AppLayout({ children }: LayoutProps<"/">) {
   return (
@@ -21,11 +21,15 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
             <Suspense fallback={null}>
               <ShellCommandMenu />
             </Suspense>
+            <Suspense fallback={<div className="size-9" />}>
+              <ShellBell />
+            </Suspense>
             <ThemeToggle />
           </div>
         </header>
         <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-4 pt-5 pb-28 md:px-6 md:pt-8 md:pb-12">
           {children}
+          <footer className="mt-12 text-center text-xs text-muted-foreground">© 2026 AQ. All rights reserved.</footer>
         </main>
       </SidebarInset>
       <Suspense fallback={null}>

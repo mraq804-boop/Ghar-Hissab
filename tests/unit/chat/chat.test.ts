@@ -127,3 +127,15 @@ describe("personal spending in the chat data", () => {
     expect(buildChatContext({ ...base, scope })).not.toContain("personal spending (private");
   });
 });
+
+describe("meter watch in the chat data", () => {
+  it("states units used, left and projected for each meter", () => {
+    const text = buildChatContext({
+      ...base,
+      scope: { seeExpenses: true, seeAllBalances: true, ownUnit: "AQ" },
+      meters: [{ label: "AQ 1", limit: 200, baseline: 841, baselineDate: "2026-10-09", nextReadingDate: "2026-11-09", latest: 901, latestAt: "2026-10-21T06:00:00Z", used: 60, projected: 155, allowancePerDay: 7.3, history: [{ month: "2026-09", units: 148 }] }],
+    });
+    expect(text).toContain("AQ 1: limit 200 units a month. LESCO read 841 on 2026-10-09; next reading about 2026-11-09. 60 units used (latest reading 901 on 2026-10-21), 140 units left before the limit, projected 155 units by 2026-11-09, about 7.3 units a day allowed to stay under.");
+    expect(text).toContain("AQ 1 units in recent months (from the bill): 2026-09 148.");
+  });
+});

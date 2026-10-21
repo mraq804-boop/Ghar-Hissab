@@ -10,6 +10,7 @@ import { canSeeAllBalances, getContext, isAdmin } from "@/server/auth";
 import type { ActionResult } from "@/server/actions/result";
 import { askGemini, ChatError } from "@/server/chat/gemini";
 import { expenseSpec, getPeriodLedgers, getReference, toPaisa } from "@/server/data/ledger";
+import { getMeterWatches } from "@/server/data/meter-watch";
 
 const turnsSchema = z
   .array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().trim().min(1).max(2000) }))
@@ -102,6 +103,7 @@ export async function askQuestion(input: { role: "user" | "assistant"; text: str
     months,
     bills,
     personal,
+    meters: (await getMeterWatches()).map((w) => ({ label: w.label, limit: w.limit, baseline: w.baseline, baselineDate: w.baselineDate, nextReadingDate: w.nextReadingDate, latest: w.latest, latestAt: w.latestAt, used: w.used, projected: w.projected, allowancePerDay: w.allowancePerDay, history: w.history })),
     scope: {
       seeExpenses: isAdmin(ctx) || ctx.settings.membersSeeAllExpenses,
       seeAllBalances: canSeeAllBalances(ctx),

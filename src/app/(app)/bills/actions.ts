@@ -10,6 +10,7 @@ import { getReference, type ExpenseRow } from "@/server/data/ledger";
 import { kickSync } from "@/server/excel/kick";
 import { PROVIDERS, isProvider, type Provider } from "@/lib/utilities/providers";
 import { checkMeter, type CheckOutcome } from "@/server/lesco/check";
+import { onBillArrived, onMeterReading } from "@/server/notify/events";
 import { createSupabaseAdmin } from "@/server/supabase/admin";
 
 const meterSchema = z
@@ -259,8 +260,68 @@ export async function uploadBill(form: FormData): Promise<ActionResult> {
   );
   if (saved.error) return dbError(saved.error);
   if (previous?.snapshot_path && previous.snapshot_path !== path) await admin.storage.from("utility-bills").remove([previous.snapshot_path]);
+  if (!previous) onBillArrived(ctx.householdId, meter.id, v.billMonth);
 
   revalidatePath("/bills");
   revalidatePath("/dashboard");
   return { ok: true, data: undefined, message: `Bill saved: Rs ${v.payable.toLocaleString("en-US")}` };
+}
+
+const readingSchema = z.object({
+  meterId: z.uuid(),
+  reading: z.coerce.number({ error: "Enter the number shown on the meter." }).int("Use whole units, without decimals.").min(0).max(9_999_999),
+  photoPath: z.string().max(200).nullable().optional(),
+});
+
+/** Any household member can record a meter reading. */
+export async function addMeterReading(input: z.input<typeof readingSchema>): Promise<ActionResult> {
+  const ctx = await getContext();
+  const parsed = readingSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const v = parsed.data;
+  if (v.photoPath && !v.photoPath.startsWith(`${ctx.householdId}/`)) return { ok: false, error: "That photo upload isn't valid. Take it again." };
+
+  const { data: bill } = await ctx.supabase
+    .from("utility_bills")
+    .select("present_reading")
+    .eq("meter_id", v.meterId)
+    .not("present_reading", "is", null)
+    .order("bill_month", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (bill?.present_reading !== null && bill?.present_reading !== undefined) {
+    if (v.reading < bill.present_reading) return { ok: false, error: `That's lower than LESCO's last reading (${bill.present_reading}). Check the number, reading only the black digits.` };
+    if (v.reading - bill.present_reading > 2000) return { ok: false, error: `That's ${v.reading - bill.present_reading} units since LESCO's last reading. Check the number before saving.` };
+  }
+
+  const { error } = await ctx.supabase.from("meter_readings").insert({ household_id: ctx.householdId, meter_id: v.meterId, reading: v.reading, photo_path: v.photoPath ?? null });
+  if (error) return dbError(error);
+  onMeterReading(ctx.householdId, v.meterId);
+  revalidatePath("/bills");
+  revalidatePath("/dashboard");
+  return { ok: true, data: undefined, message: `Reading ${v.reading} saved` };
+}
+
+export async function deleteMeterReading(id: string): Promise<ActionResult> {
+  const ctx = await getContext();
+  if (!z.uuid().safeParse(id).success) return { ok: false, error: "That reading couldn't be found." };
+  const { data, error } = await ctx.supabase.from("meter_readings").delete().eq("id", id).select("photo_path");
+  if (error) return dbError(error);
+  if (!data.length) return { ok: false, error: "You can only remove readings you added." };
+  if (data[0].photo_path) await ctx.supabase.storage.from("meter-photos").remove([data[0].photo_path]);
+  revalidatePath("/bills");
+  revalidatePath("/dashboard");
+  return { ok: true, data: undefined, message: "Reading removed" };
+}
+
+export async function setUnitLimit(input: { meterId: string; limit: number }): Promise<ActionResult> {
+  const ctx = await getContext();
+  if (!isAdmin(ctx)) return forbidden;
+  const parsed = z.object({ meterId: z.uuid(), limit: z.coerce.number().int().min(1).max(10_000) }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Enter a whole number of units, e.g. 200." };
+  const { error } = await ctx.supabase.from("utility_meters").update({ unit_limit: parsed.data.limit }).eq("id", parsed.data.meterId);
+  if (error) return dbError(error);
+  revalidatePath("/bills");
+  revalidatePath("/dashboard");
+  return { ok: true, data: undefined, message: `Limit set to ${parsed.data.limit} units` };
 }

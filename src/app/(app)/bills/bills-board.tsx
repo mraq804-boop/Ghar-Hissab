@@ -17,6 +17,8 @@ import { readImageText } from "@/lib/ocr/read-screenshot";
 import { PROVIDER_LIST, PROVIDERS, type Provider } from "@/lib/utilities/providers";
 import { readBillText } from "@/lib/utilities/read-bill-text";
 import { cn } from "@/lib/utils";
+import type { MeterWatchView } from "@/server/data/meter-watch";
+import { MeterWatchPanel } from "./meter-watch";
 import { addBillToExpenses, addMeter, checkNow, deleteMeter, updateMeter, uploadBill } from "./actions";
 
 export type MeterView = {
@@ -54,7 +56,23 @@ const monthLabel = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString("
 type Result = { ok: true; message?: string } | { ok: false; error: string };
 type Run = (key: string, fn: () => Promise<Result>) => void;
 
-export function BillsBoard({ admin, meters, bills, today, categories }: { admin: boolean; meters: MeterView[]; bills: BillView[]; today: string; categories: { id: string; name: string }[] }) {
+export function BillsBoard({
+  admin,
+  householdId,
+  watches,
+  meters,
+  bills,
+  today,
+  categories,
+}: {
+  admin: boolean;
+  householdId: string;
+  watches: MeterWatchView[];
+  meters: MeterView[];
+  bills: BillView[];
+  today: string;
+  categories: { id: string; name: string }[];
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
@@ -160,6 +178,10 @@ export function BillsBoard({ admin, meters, bills, today, categories }: { admin:
                 <p className="text-sm text-muted-foreground">No bill fetched yet.{m.lastCheckedAt ? ` Last checked ${new Date(m.lastCheckedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}.` : ""}</p>
               ) : null}
 
+              {watches.find((w) => w.meterId === m.id) ? (
+                <MeterWatchPanel watch={watches.find((w) => w.meterId === m.id)!} householdId={householdId} admin={admin} />
+              ) : null}
+
               {mine.length > 1 ? (
                 <details className="text-sm">
                   <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Earlier bills ({mine.length - 1})</summary>
@@ -197,7 +219,7 @@ export function BillsBoard({ admin, meters, bills, today, categories }: { admin:
           onClose={() => setUploading(null)}
           onSaved={() => {
             setUploading(null);
-            router.refresh();
+            start(() => router.refresh());
           }}
         />
       ) : null}

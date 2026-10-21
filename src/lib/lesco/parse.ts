@@ -8,6 +8,9 @@ export type LescoBill = {
   payable: number;
   currentBill: number | null;
   latePayments: { until: string | null; amount: number }[];
+  previousReading: number | null;
+  presentReading: number | null;
+  history: { month: string; units: number; bill: number | null; payment: number | null }[];
 };
 
 export type LescoParseResult = { ok: true; bill: LescoBill } | { ok: false; reason: "captcha" | "not_found" | "unreadable" };
@@ -63,6 +66,24 @@ export function parseLescoBill(html: string): LescoParseResult {
   const refM = after(text, "REFERENCE NO", /\b(\d{2})\s*(\d{5})\s*(\d{7})(?:\s*U|\s*R)?\b/, 120);
   const unitsM = /UNITS<\/span>[\s\S]{0,200}?class="val-space">\s*(\d+)/i.exec(html);
   const currentM = /Current Bill<\/span>[\s\S]{0,200}?charges-bd-val">\s*([\d,]+)/i.exec(html);
+  const readingAfter = (label: string) => {
+    const m = new RegExp(`${label}<\\/span>[\\s\\S]{0,200}?class="val-space">\\s*(\\d+)`, "i").exec(html);
+    return m ? Number(m[1]) : null;
+  };
+
+  const history: LescoBill["history"] = [];
+  for (const chunk of html.split(/<div class="history-row">/i).slice(1)) {
+    const cells = [...chunk.matchAll(/<div class="history-cell">([\s\S]*?)<\/div>/gi)].slice(0, 5).map((c) => c[1].replace(/<[^>]+>/g, "").trim());
+    const mm = /^([A-Z]{3})(\d{2})$/i.exec(cells[0] ?? "");
+    const mon = mm ? month(mm[1]) : null;
+    if (!mm || !mon || !/^\d+$/.test(cells[2] ?? "")) continue;
+    history.push({
+      month: `20${mm[2]}-${pad(mon)}`,
+      units: Number(cells[2]),
+      bill: cells[3] && /^[\d,]+$/.test(cells[3]) ? amount(cells[3]) : null,
+      payment: cells[4] && /^[\d,]+$/.test(cells[4]) ? amount(cells[4]) : null,
+    });
+  }
 
   const latePayments: LescoBill["latePayments"] = [];
   const lateText = after(text, "PAYABLE AFTER DUE DATE", /([\s\S]*)/, 200)?.[1] ?? "";
@@ -90,6 +111,9 @@ export function parseLescoBill(html: string): LescoParseResult {
       payable: amount(payableM[1]),
       currentBill: currentM ? amount(currentM[1]) : null,
       latePayments,
+      previousReading: readingAfter("PREVIOUS READING"),
+      presentReading: readingAfter("PRESENT READING"),
+      history,
     },
   };
 }
