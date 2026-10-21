@@ -2,7 +2,8 @@
 
 import { z } from "zod";
 import { describeSpec, ruleToSpec } from "@/lib/finance";
-import { buildChatContext, CHAT_INSTRUCTIONS, type ChatMonth } from "@/lib/chat/context";
+import { buildChatContext, CHAT_INSTRUCTIONS, type ChatBill, type ChatMonth } from "@/lib/chat/context";
+import { PROVIDERS, isProvider } from "@/lib/utilities/providers";
 import { methodLabel } from "@/lib/labels";
 import { periodLabel } from "@/lib/periods";
 import { canSeeAllBalances, getContext, isAdmin } from "@/server/auth";
@@ -62,11 +63,33 @@ export async function askQuestion(input: { role: "user" | "assistant"; text: str
       .map((p) => ({ payer: code(p.payer_unit_id), amountPaisa: toPaisa(p.amount)!, paidOn: p.paid_on, method: methodLabel(p.method), status: p.status })),
   }));
 
+  const { data: billRows } = await ctx.supabase
+    .from("utility_bills")
+    .select("bill_month, payable, due_date, late_payments, units, expense_id, utility_meters(label, provider)")
+    .order("bill_month", { ascending: false })
+    .limit(24);
+  const bills: ChatBill[] = (billRows ?? []).map((b) => {
+    const meter = b.utility_meters as unknown as { label: string; provider: string } | null;
+    const p = meter && isProvider(meter.provider) ? PROVIDERS[meter.provider] : null;
+    return {
+      connection: meter?.label ?? "?",
+      company: p?.name ?? "?",
+      utility: p?.utility ?? "?",
+      month: periodLabel({ year: Number(b.bill_month.slice(0, 4)), month: Number(b.bill_month.slice(5, 7)) }, true),
+      payablePaisa: toPaisa(b.payable)!,
+      dueDate: b.due_date,
+      latePayments: ((b.late_payments ?? []) as { until: string | null; amount: number }[]).map((l) => ({ until: l.until, amountPaisa: toPaisa(l.amount)! })),
+      units: b.units,
+      inExpenses: Boolean(b.expense_id),
+    };
+  });
+
   const data = buildChatContext({
     today: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi" }).format(new Date()),
     households: ref.units.filter((u) => u.active).map((u) => ({ code: u.code, isPurseHolder: u.is_purse_holder })),
     rules: ref.rules.filter((r) => r.active).map((r) => `${r.name} = ${describeSpec(ruleToSpec(r), code)}`),
     months,
+    bills,
     scope: {
       seeExpenses: isAdmin(ctx) || ctx.settings.membersSeeAllExpenses,
       seeAllBalances: canSeeAllBalances(ctx),

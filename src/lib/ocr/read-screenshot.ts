@@ -30,13 +30,18 @@ export const READABLE_TYPES = ["image/jpeg", "image/png", "image/webp"];
  * Returns null when the image can't be read; callers fall back to manual entry.
  */
 export async function readPaymentScreenshot(image: Blob, onProgress?: (p: number) => void): Promise<PaymentRead | null> {
+  const text = await readImageText(image, onProgress);
+  return text === null ? null : parsePaymentText(text);
+}
+
+/** Returns the text in an image, read on this device, or null when it can't be read. */
+export async function readImageText(image: Blob, onProgress?: (p: number) => void): Promise<string | null> {
   if (!READABLE_TYPES.includes(image.type)) return null;
   try {
     const worker = await getWorker(onProgress);
     const timeout = new Promise<null>((r) => setTimeout(() => r(null), 45_000));
     const result = await Promise.race([worker.recognize(image), timeout]);
-    if (!result) return null;
-    return parsePaymentText(result.data.text);
+    return result ? result.data.text : null;
   } catch (e) {
     console.warn("Screenshot reading failed", e);
     return null;

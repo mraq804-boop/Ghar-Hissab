@@ -9,6 +9,7 @@ import {
   Settings,
   Users,
   Wallet,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -25,6 +26,7 @@ export const NAV: NavItem[] = [
   { href: "/expenses", label: "Expenses", icon: Receipt, keepPeriod: true },
   { href: "/payments", label: "Payments", icon: Wallet, keepPeriod: true },
   { href: "/division", label: "Expense division", icon: Scale, keepPeriod: true },
+  { href: "/bills", label: "Bills", icon: Zap },
   { href: "/family", label: "Family", icon: Users },
   { href: "/reports", label: "Reports", icon: FileText },
   { href: "/ask", label: "Ask", icon: MessagesSquare },

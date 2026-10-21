@@ -32,6 +32,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["@react-pdf/renderer", "exceljs"],
   experimental: {
+    serverActions: { bodySizeLimit: "5mb" },
     useOffline: true,
   },
   turbopack: {

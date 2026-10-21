@@ -364,3 +364,59 @@ describe("sync worker", () => {
     expect(again.id).toBe(job.id);
   });
 });
+
+describe("electricity bills", () => {
+  let meterId: string;
+  let billId: string;
+
+  it("only admins add meters, and reference numbers must have 14 digits", async () => {
+    await expectDbError(
+      rpc(AK_USER, `insert into public.utility_meters (household_id, label, reference_no) values ($1, 'Upstairs', '02117110000001')`, [ids.householdId]),
+      /row-level security/,
+    );
+    await expectDbError(rpc(ADMIN, `insert into public.utility_meters (household_id, label, reference_no) values ($1, 'Bad', '123')`, [ids.householdId]), /check/);
+    [{ id: meterId }] = await rpc<{ id: string }>(
+      ADMIN,
+      `insert into public.utility_meters (household_id, label, reference_no, category_id) values ($1, 'Ground floor', '02117110000001', $2) returning id`,
+      [ids.householdId, ids.categories.WAPDA ?? null],
+    );
+  });
+
+  it("bills are written by the server, read by members and only their expense link can change", async () => {
+    [{ id: billId }] = await rpc<{ id: string }>(
+      "service",
+      `insert into public.utility_bills (household_id, meter_id, bill_month, due_date, payable) values ($1, $2, '2026-10-01', '2026-10-22', 1524) returning id`,
+      [ids.householdId, meterId],
+    );
+    expect(await rpc(AB_USER, `select payable from public.utility_bills where id = $1`, [billId])).toEqual([{ payable: "1524.00" }]);
+    await expectDbError(rpc(ADMIN, `insert into public.utility_bills (household_id, meter_id, bill_month, payable) values ($1, $2, '2026-11-01', 1)`, [ids.householdId, meterId]), /row-level security/);
+    await expectDbError(rpc(ADMIN, `update public.utility_bills set payable = 1 where id = $1`, [billId]), /permission denied/);
+    await expectDbError(rpc(AK_USER, `update public.utility_bills set expense_id = null where id = $1 returning id`, [billId]).then((r) => { if (!r.length) throw new Error("row-level security: no row updated"); }), /row-level security/);
+    expect(await rpc(ADMIN, `update public.utility_bills set expense_id = null where id = $1 returning id`, [billId])).toEqual([{ id: billId }]);
+  });
+
+  it("outsiders see no meters or bills", async () => {
+    expect(await rpc(STRANGER, `select id from public.utility_meters`)).toEqual([]);
+    expect(await rpc(STRANGER, `select id from public.utility_bills`)).toEqual([]);
+  });
+});
+
+describe("water and gas connections", () => {
+  it("checks each company's number format", async () => {
+    await expectDbError(rpc(ADMIN, `insert into public.utility_meters (household_id, provider, label, reference_no) values ($1, 'sngpl', 'Gas', '123')`, [ids.householdId]), /check/);
+    await expectDbError(rpc(ADMIN, `insert into public.utility_meters (household_id, provider, label, reference_no) values ($1, 'ptcl', 'Phone', '12345678901')`, [ids.householdId]), /check/);
+    const rows = await rpc(ADMIN, `insert into public.utility_meters (household_id, provider, label, reference_no) values ($1, 'sngpl', 'Gas', '12345678901'), ($1, 'wasa', 'Water', '2345678') returning provider`, [ids.householdId]);
+    expect(rows).toEqual([{ provider: "sngpl" }, { provider: "wasa" }]);
+  });
+
+  it("records uploaded bills with their file type", async () => {
+    const [{ id: meterId }] = await rpc<{ id: string }>(ADMIN, `select id from public.utility_meters where provider = 'sngpl'`);
+    const [bill] = await rpc(
+      "service",
+      `insert into public.utility_bills (household_id, meter_id, bill_month, payable, source, snapshot_mime) values ($1, $2, '2026-10-01', 8730, 'upload', 'image/jpeg') returning source, snapshot_mime`,
+      [ids.householdId, meterId],
+    );
+    expect(bill).toEqual({ source: "upload", snapshot_mime: "image/jpeg" });
+    await expectDbError(rpc("service", `insert into public.utility_bills (household_id, meter_id, bill_month, payable, snapshot_mime) values ($1, $2, '2026-11-01', 1, 'text/javascript')`, [ids.householdId, meterId]), /check/);
+  });
+});

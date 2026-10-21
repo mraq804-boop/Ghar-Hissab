@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>LESCO BILL</title>
+  <link rel="stylesheet" href="/styles/gbill-design.css?v=20260811e" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto&amp;display=swap" />
+  <style>#loader-container { position: fixed; inset: 0; } .logo { background: url(/images/bg.png); }</style>
+  <script src="/js/jquery-3.6.0.min.js"></script>
+  <script>document.cookie = "x";</script>
+</head>
+<body class="gbn-print-root">
+  <div id="loader-container"><div class="bill-loader" role="status">Loading your bill</div></div>
+  <form method="post" action="./general?refno=09999990000001" id="form1">
+    <input type="hidden" name="__VIEWSTATE" value="abc" />
+    <button type="button" onclick="window.print()">Print</button>
+    <img src="/images/companies/lesco/logo.png" alt="LESCO" />
+    <img src="/images/meter-snaps/1.jpg" alt="meter" />
+    <a href="javascript:alert(1)" target="_blank">bad link</a>
+    <div onmouseover="alert(2)" style="background:url(https://evil.example/x.png)">CONSUMER DETAIL</div>
+    <div><span>REFERENCE NO</span> <span class="ur-lbl">حوالہ نمبر</span> <span class="val">09 99999 0000001</span></div>
+    <div class="right-main"><span>BILL MONTH</span> <span class="ur-lbl">مہینہ بل</span> <div class="right-main-val">NOV 26</div></div>
+    <div class="right-grid-cell"><span>READING DATE</span> <span class="ur-lbl">تاریخ ریڈنگ</span> <span class="right-panel-date-val">10 NOV 26</span></div>
+    <div class="right-grid-cell"><span>ISSUE DATE</span> <span class="ur-lbl">تاریخ اجراء</span> <span class="right-panel-date-val">14 NOV 26</span></div>
+    <div><span>&#9888; DUE DATE</span> <span class="ur-lbl">مقررہ تاریخ</span> <span>28 NOV 26</span></div>
+    <div><span>PAYABLE WITHIN DUE DATE</span> <span class="ur-lbl">مقررہ تاریخ تک واجب الادا</span> <span>12,345</span></div>
+    <div><span>L.P SURCHARGE</span> <span>380</span> <span>760</span></div>
+    <div class="meter"><span class="lbl">UNITS</span><span class="ur-lbl">یونٹ</span></div> <div class="val-space">402<br><br></div>
+    <div><span class="charges-bd-en">Current Bill</span> <span class="charges-bd-ur">موجودہ بل</span> <span class="charges-bd-val">11,020</span></div>
+    <iframe src="https://evil.example/frame"></iframe>
+    <svg><script>alert(3)</script></svg>
+    <div class="slip"><div>PAYABLE AFTER DUE DATE <span class="ur-lbl">مقررہ تاریخ کے بعد واجب الادا</span></div>
+      <div class="slip-matrix-value slip-late-box">Till 03--EC<br />12,725</div>
+      <div class="slip-matrix-value slip-late-box">After 03--EC<br />13,105</div>
+    </div>
+  </form>
+</body>
+</html>

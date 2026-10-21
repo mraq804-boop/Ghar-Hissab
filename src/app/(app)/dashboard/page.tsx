@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { format } from "date-fns";
-import { AlertTriangle, CalendarClock, Telescope, CalendarPlus, Clock3, Copy, FileWarning, Receipt, TrendingUp, Wallet } from "lucide-react";
+import { AlertTriangle, CalendarClock, Telescope, Zap, CalendarPlus, Clock3, Copy, FileWarning, Receipt, TrendingUp, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Money } from "@/components/ledger/money";
@@ -245,6 +245,19 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
                 From {periodLabel(o.period, true)}
               </AttentionItem>
             ))}
+            {d.billNotices.map((b) => (
+              <AttentionItem
+                key={`${b.kind}-${b.id}`}
+                href={b.kind === "arrived" ? "/bills" : `/bills/view?id=${b.id}`}
+                icon={Zap}
+                tone={b.kind === "due" ? "warning" : "neutral"}
+                title={b.kind === "arrived" ? `${b.label} bill arrived: ${formatPaisa(BigInt(Math.round(b.amount * 100)))}` : `${b.label} bill due ${b.dueDate ? format(new Date(`${b.dueDate}T00:00:00`), "d MMM") : "soon"}`}
+              >
+                {b.kind === "arrived"
+                  ? `Due ${b.dueDate ? format(new Date(`${b.dueDate}T00:00:00`), "d MMM") : "soon"}.${d.isAdmin ? " Tap to add it to expenses." : ""}`
+                  : `${formatPaisa(BigInt(Math.round(b.amount * 100)))} to pay LESCO by then`}
+              </AttentionItem>
+            ))}
             {d.alerts.map((a) => (
               <AttentionItem
                 key={a.title}
@@ -261,7 +274,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
                 Shares will change when the amounts are entered
               </AttentionItem>
             ) : null}
-            {d.pendingPayments === 0 && d.overdue.length === 0 && d.alerts.length === 0 && s.pendingBillCount === 0 ? (
+            {d.pendingPayments === 0 && d.overdue.length === 0 && d.alerts.length === 0 && d.billNotices.length === 0 && s.pendingBillCount === 0 ? (
               <li className="px-5 py-8 text-center text-sm text-muted-foreground">Nothing needs attention right now.</li>
             ) : null}
           </ul>

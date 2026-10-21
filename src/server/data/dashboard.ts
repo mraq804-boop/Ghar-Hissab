@@ -112,6 +112,22 @@ export async function getDashboard(filters: DashboardFilters) {
       })
     : null;
 
+  const monthStart = `${period.year}-${String(period.month).padStart(2, "0")}-01`;
+  const { data: monthBills } = await ctx.supabase
+    .from("utility_bills")
+    .select("id, payable, due_date, expense_id, utility_meters(label)")
+    .eq("bill_month", monthStart);
+  const todayIso = `${ty}-${String(tm).padStart(2, "0")}-${String(td).padStart(2, "0")}`;
+  const soon = new Date(Date.UTC(ty, tm - 1, td + 3)).toISOString().slice(0, 10);
+  const billNotices = (monthBills ?? []).flatMap((b) => {
+    const label = (b.utility_meters as unknown as { label: string } | null)?.label ?? "Electricity";
+    const amount = Number(b.payable);
+    const out: { id: string; kind: "arrived" | "due"; label: string; amount: number; dueDate: string | null }[] = [];
+    if (!b.expense_id) out.push({ id: b.id, kind: "arrived", label, amount, dueDate: b.due_date });
+    else if (b.due_date && b.due_date >= todayIso && b.due_date <= soon) out.push({ id: b.id, kind: "due", label, amount, dueDate: b.due_date });
+    return out;
+  });
+
   const recentPayments = current.payments
     .filter((p) => !unitFilter || p.payer_unit_id === unitFilter.id)
     .slice(0, 6);
@@ -138,6 +154,7 @@ export async function getDashboard(filters: DashboardFilters) {
     trend,
     overdue,
     alerts,
+    billNotices,
     forecast: forecast && { ...forecast, units: forecast.units.filter((u) => seeAll || u.unitId === ctx.unitId) },
     billsNotIssued: current.expenses.filter((e) => e.amount === null).map((e) => e.title),
     recentPayments: recentPayments as PaymentRow[],

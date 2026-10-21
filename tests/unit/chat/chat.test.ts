@@ -98,3 +98,14 @@ describe("askGemini", () => {
     await expect(askGemini("S", [{ role: "user", text: "q" }], reply(200, { promptFeedback: { blockReason: "SAFETY" } }))).rejects.toBeInstanceOf(ChatError);
   });
 });
+
+describe("utility bills in the chat data", () => {
+  it("lists each bill with its due date and late amounts, without reference numbers", () => {
+    const text = buildChatContext({
+      ...base,
+      bills: [{ connection: "AQ 1", company: "LESCO", utility: "Electricity", month: "October 2026", payablePaisa: rs(1524), dueDate: "2026-10-22", latePayments: [{ until: "2026-10-26", amountPaisa: rs(1580) }, { until: null, amountPaisa: rs(1636) }], units: 63, inExpenses: false }],
+      scope: { seeExpenses: true, seeAllBalances: true, ownUnit: "AQ" },
+    });
+    expect(text).toContain("AQ 1 | LESCO | Electricity | October 2026 | Rs 1,524 | 2026-10-22 | Rs 1,580 until 2026-10-26, Rs 1,636 after that | 63 | no");
+  });
+});
