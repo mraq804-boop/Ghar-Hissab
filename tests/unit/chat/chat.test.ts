@@ -109,3 +109,21 @@ describe("utility bills in the chat data", () => {
     expect(text).toContain("AQ 1 | LESCO | Electricity | October 2026 | Rs 1,524 | 2026-10-22 | Rs 1,580 until 2026-10-26, Rs 1,636 after that | 63 | no");
   });
 });
+
+describe("personal spending in the chat data", () => {
+  it("adds the asker's own monthly and category totals, and nothing when there is none", () => {
+    const scope = { seeExpenses: true, seeAllBalances: true, ownUnit: "AK" };
+    const text = buildChatContext({
+      ...base,
+      scope,
+      personal: [
+        { date: "2026-10-20", category: "Fuel", amountPaisa: rs(3000) },
+        { date: "2026-10-05", category: "Fuel", amountPaisa: rs(2500) },
+        { date: "2026-10-03", category: "Medicine", amountPaisa: rs(850) },
+      ],
+    });
+    expect(text).toContain("2026-10: total Rs 6,350. By category, largest first: Fuel Rs 5,500; Medicine Rs 850.");
+    expect(text).toContain("2026-10-20 | Fuel | Rs 3,000");
+    expect(buildChatContext({ ...base, scope })).not.toContain("personal spending (private");
+  });
+});

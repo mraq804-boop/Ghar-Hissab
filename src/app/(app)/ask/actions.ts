@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { describeSpec, ruleToSpec } from "@/lib/finance";
-import { buildChatContext, CHAT_INSTRUCTIONS, type ChatBill, type ChatMonth } from "@/lib/chat/context";
+import { buildChatContext, CHAT_INSTRUCTIONS, type ChatBill, type ChatMonth, type ChatPersonal } from "@/lib/chat/context";
 import { PROVIDERS, isProvider } from "@/lib/utilities/providers";
 import { methodLabel } from "@/lib/labels";
 import { periodLabel } from "@/lib/periods";
@@ -84,12 +84,24 @@ export async function askQuestion(input: { role: "user" | "assistant"; text: str
     };
   });
 
+  const sixMonthsAgo = new Date(Date.now() - 183 * 86400_000).toISOString().slice(0, 10);
+  const [{ data: ownRows }, { data: ownCats }] = await Promise.all([
+    ctx.supabase.from("personal_expenses").select("spent_on, amount, category_id").eq("user_id", ctx.userId).gte("spent_on", sixMonthsAgo).order("spent_on", { ascending: false }).limit(400),
+    ctx.supabase.from("personal_categories").select("id, name").eq("user_id", ctx.userId),
+  ]);
+  const personal: ChatPersonal = (ownRows ?? []).map((r) => ({
+    date: r.spent_on,
+    category: ownCats?.find((c) => c.id === r.category_id)?.name ?? "Uncategorised",
+    amountPaisa: toPaisa(r.amount)!,
+  }));
+
   const data = buildChatContext({
     today: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi" }).format(new Date()),
     households: ref.units.filter((u) => u.active).map((u) => ({ code: u.code, isPurseHolder: u.is_purse_holder })),
     rules: ref.rules.filter((r) => r.active).map((r) => `${r.name} = ${describeSpec(ruleToSpec(r), code)}`),
     months,
     bills,
+    personal,
     scope: {
       seeExpenses: isAdmin(ctx) || ctx.settings.membersSeeAllExpenses,
       seeAllBalances: canSeeAllBalances(ctx),

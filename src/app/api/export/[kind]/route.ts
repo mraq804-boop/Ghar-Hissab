@@ -3,6 +3,7 @@ import { getContext } from "@/server/auth";
 import { buildReport, parseFilters, ReportAccessError, reportType, type ReportType } from "@/server/reports";
 import { reportToXlsx } from "@/server/export/xlsx";
 import { reportToPdf } from "@/server/export/pdf";
+import { personalReport } from "@/server/data/personal";
 
 export const maxDuration = 30;
 
@@ -10,6 +11,20 @@ export async function GET(request: NextRequest, ctxRoute: RouteContext<"/api/exp
   const { kind } = await ctxRoute.params;
   const ctx = await getContext();
   const sp = Object.fromEntries(request.nextUrl.searchParams);
+  if (kind === "personal") {
+    const m = typeof sp.m === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.m) ? sp.m : null;
+    if (!m) return NextResponse.json({ error: "choose a month" }, { status: 400 });
+    const fmt = sp.format === "pdf" ? "pdf" : "xlsx";
+    const report = await personalReport(m);
+    const body = fmt === "pdf" ? await reportToPdf(report, "Private") : await reportToXlsx(report, "Private");
+    return new NextResponse(new Uint8Array(body), {
+      headers: {
+        "content-type": fmt === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "content-disposition": `attachment; filename="my-spending-${m}.${fmt}"`,
+        "cache-control": "private, no-store",
+      },
+    });
+  }
   let type: ReportType;
   let filters = parseFilters(sp);
   if (kind === "expenses") {

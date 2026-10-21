@@ -85,7 +85,7 @@ export function ChatBoard() {
       <p className="flex gap-2 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2.5 text-xs text-warning">
         <ShieldAlert className="mt-0.5 size-4 shrink-0" />
         <span>
-          Questions are answered by Google Gemini (free). Each question sends this household&apos;s figures to Google using household codes
+          Questions are answered by Google Gemini (free). Each question sends this household&apos;s figures, and your own personal spending (amounts and categories, no notes), to Google using household codes
           only: no names, phone numbers, notes or transaction IDs. Google may keep and review free-tier questions. Answers can be wrong, so
           check important numbers in the app.
         </span>

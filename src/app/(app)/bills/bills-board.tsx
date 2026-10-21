@@ -12,6 +12,7 @@ import { ConfirmButton } from "@/components/ledger/confirm-button";
 import { Field } from "@/components/ledger/field";
 import { EmptyState, Panel } from "@/components/ledger/page-header";
 import { ResponsiveDialog } from "@/components/ledger/responsive-dialog";
+import { shrinkImage } from "@/lib/images";
 import { readImageText } from "@/lib/ocr/read-screenshot";
 import { PROVIDER_LIST, PROVIDERS, type Provider } from "@/lib/utilities/providers";
 import { readBillText } from "@/lib/utilities/read-bill-text";
@@ -307,18 +308,6 @@ function AddMeter({ categories, disabled, run, busy }: { categories: { id: strin
   );
 }
 
-async function shrink(file: File): Promise<Blob> {
-  if (!file.type.startsWith("image/") || file.size < 900_000) return file;
-  const bitmap = await createImageBitmap(file).catch(() => null);
-  if (!bitmap) return file;
-  const scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  return new Promise((resolve) => canvas.toBlob((b) => resolve(b ?? file), "image/jpeg", 0.85));
-}
-
 function UploadBill({ meter, today, onClose, onSaved }: { meter: MeterView; today: string; onClose: () => void; onSaved: () => void }) {
   const p = PROVIDERS[meter.provider];
   const [file, setFile] = useState<Blob | null>(null);
@@ -334,7 +323,7 @@ function UploadBill({ meter, today, onClose, onSaved }: { meter: MeterView; toda
   const choose = async (f: File | undefined) => {
     if (!f) return;
     setName(f.name);
-    const small = await shrink(f);
+    const small = await shrinkImage(f);
     setFile(small);
     if (!small.type.startsWith("image/")) {
       setNote("PDFs can't be read automatically. Type the amount and due date below.");

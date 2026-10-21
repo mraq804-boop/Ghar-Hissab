@@ -420,3 +420,50 @@ describe("water and gas connections", () => {
     await expectDbError(rpc("service", `insert into public.utility_bills (household_id, meter_id, bill_month, payable, snapshot_mime) values ($1, $2, '2026-11-01', 1, 'text/javascript')`, [ids.householdId, meterId]), /check/);
   });
 });
+
+describe("personal spending", () => {
+  let akExpense: string;
+
+  it("each person records their own categories, spending and budgets", async () => {
+    const [{ id: cat }] = await rpc<{ id: string }>(AK_USER, `insert into public.personal_categories (name) values ('Fuel') returning id`);
+    [{ id: akExpense }] = await rpc<{ id: string }>(
+      AK_USER,
+      `insert into public.personal_expenses (category_id, amount, spent_on, note) values ($1, 3000, '2026-10-20', 'petrol') returning id`,
+      [cat],
+    );
+    await rpc(AK_USER, `insert into public.personal_budgets (amount) values (20000)`);
+    expect(await rpc(AK_USER, `select amount from public.personal_expenses`)).toEqual([{ amount: "3000.00" }]);
+  });
+
+  it("nobody else can see or change them, not even the administrator", async () => {
+    for (const other of [ADMIN, AB_USER, STRANGER]) {
+      expect(await rpc(other, `select id from public.personal_expenses`)).toEqual([]);
+      expect(await rpc(other, `select id from public.personal_categories`)).toEqual([]);
+      expect(await rpc(other, `select id from public.personal_budgets`)).toEqual([]);
+      expect(await rpc(other, `update public.personal_expenses set amount = 1 where id = $1 returning id`, [akExpense])).toEqual([]);
+      expect(await rpc(other, `delete from public.personal_expenses where id = $1 returning id`, [akExpense])).toEqual([]);
+    }
+    await expectDbError(
+      rpc(ADMIN, `insert into public.personal_expenses (user_id, amount, spent_on) values ($1, 5, '2026-10-20')`, [AK_USER.sub]),
+      /row-level security/,
+    );
+  });
+
+  it("writes no audit copies", async () => {
+    expect(await rpc("service", `select count(*)::int as n from public.audit_log where table_name like 'personal_%'`)).toEqual([{ n: 0 }]);
+  });
+
+  it("keeps receipt files under the owner's folder", async () => {
+    await rpc(AK_USER, `insert into storage.objects (bucket_id, name, owner_id) values ('personal-receipts', $1, $2)`, [`${AK_USER.sub}/r1.jpg`, AK_USER.sub]);
+    await expectDbError(
+      rpc(AB_USER, `insert into storage.objects (bucket_id, name, owner_id) values ('personal-receipts', $1, $2)`, [`${AK_USER.sub}/r2.jpg`, AB_USER.sub]),
+      /row-level security/,
+    );
+    expect(await rpc(ADMIN, `select name from storage.objects where bucket_id = 'personal-receipts'`)).toEqual([]);
+    expect(await rpc(AK_USER, `select name from storage.objects where bucket_id = 'personal-receipts'`)).toEqual([{ name: `${AK_USER.sub}/r1.jpg` }]);
+    await expectDbError(
+      rpc(AK_USER, `insert into public.personal_expenses (amount, spent_on, receipt_path) values (5, '2026-10-20', $1)`, [`${AB_USER.sub}/x.jpg`]),
+      /check/,
+    );
+  });
+});
