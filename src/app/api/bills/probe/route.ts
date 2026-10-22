@@ -2,7 +2,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 
 export const maxDuration = 60;
-export const preferredRegion = "sin1";
 
 function authorized(request: NextRequest, secret: string) {
   const a = Buffer.from(request.headers.get("authorization") ?? "");
@@ -17,9 +16,9 @@ export async function GET(request: NextRequest) {
   const started = Date.now();
   try {
     const res = await fetch("https://bill.pitc.com.pk/lescobill", { signal: AbortSignal.timeout(45_000), cache: "no-store" });
-    return NextResponse.json({ region: process.env.VERCEL_REGION ?? "sin1", status: res.status, seconds: (Date.now() - started) / 1000 });
+    return NextResponse.json({ region: process.env.VERCEL_REGION ?? "unknown", status: res.status, seconds: (Date.now() - started) / 1000 });
   } catch (e) {
     const err = e as { name?: string; cause?: { code?: string } };
-    return NextResponse.json({ region: process.env.VERCEL_REGION ?? "sin1", error: err.cause?.code ?? err.name ?? "failed", seconds: (Date.now() - started) / 1000 });
+    return NextResponse.json({ region: process.env.VERCEL_REGION ?? "unknown", error: err.cause?.code ?? err.name ?? "failed", seconds: (Date.now() - started) / 1000 });
   }
 }
