@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { checkAllMeters } from "@/server/lesco/check";
+import { onBillArrived } from "@/server/notify/events";
 import { createSupabaseAdmin } from "@/server/supabase/admin";
 
 export const maxDuration = 300;
@@ -16,7 +17,7 @@ async function handle(request: NextRequest) {
   if (!secret || secret.length < 32) return NextResponse.json({ error: "bill check not configured" }, { status: 503 });
   if (!authorized(request, secret)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi" }).format(new Date());
-  const results = await checkAllMeters(createSupabaseAdmin(), today);
+  const results = await checkAllMeters(createSupabaseAdmin(), today, 270_000, { onNewBill: onBillArrived });
   return NextResponse.json({ checked: results.length, results });
 }
 

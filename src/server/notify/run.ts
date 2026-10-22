@@ -42,6 +42,19 @@ export async function runScheduled(db: SupabaseClient, now = new Date()) {
       }
     }
 
+    const { data: fresh } = await db
+      .from("utility_bills")
+      .select("id, payable, due_date, utility_meters(label, provider)")
+      .eq("household_id", householdId)
+      .gte("fetched_at", new Date(now.getTime() - 2 * 86_400_000).toISOString());
+    for (const b of fresh ?? []) {
+      const meter = b.utility_meters as unknown as { label: string; provider: string } | null;
+      const company = meter && isProvider(meter.provider) ? PROVIDERS[meter.provider].name : "";
+      const dueText = b.due_date ? `, due ${dayMonth(b.due_date as string)}` : "";
+      const r = await notify(householdId, everyone(people), { category: "bills", title: `${meter?.label ?? "New"} ${company} bill arrived: ${rs(Number(b.payable))}${dueText}`, body: "Tap to see the bill.", url: `/bills/view?id=${b.id}`, dedupeKey: `bill-${b.id}-arrived` }, db);
+      add("billArrived", r.created);
+    }
+
     if (due.billDueCheck) {
       const soon = new Date(Date.parse(`${local.date}T00:00:00Z`) + 2 * 86_400_000).toISOString().slice(0, 10);
       const { data: bills } = await db

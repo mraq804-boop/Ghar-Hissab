@@ -1,0 +1,34 @@
+name: Fetch utility bills
+
+# LESCO's bill site doesn't accept connections from Vercel's servers, so the daily
+# bill fetch runs here. It also asks the app to send any due notifications.
+on:
+  schedule:
+    - cron: "30 4 * * *" # 09:30 Pakistan time, every day
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fetch-bills
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Fetch bills
+        run: npx tsx --conditions=react-server scripts/fetch-bills.ts
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: https://ghar-hissab.vercel.app

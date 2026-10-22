@@ -51,7 +51,7 @@ export async function addMeter(input: z.input<typeof meterSchema>): Promise<Acti
     revalidatePath("/bills");
     return { ok: true, data: undefined, message: `${v.label} added. Use "Get bill" and "Upload bill" when the ${provider.utility.toLowerCase()} bill comes.` };
   }
-  const outcome = await checkMeter(createSupabaseAdmin(), { ...data, provider: v.provider as Provider });
+  const outcome = await checkMeter(createSupabaseAdmin(), { ...data, provider: v.provider as Provider }, { onNewBill: onBillArrived });
   revalidatePath("/bills");
   revalidatePath("/dashboard");
   const r = outcomeMessage(outcome, v.label);
@@ -91,7 +91,7 @@ export async function checkNow(id: string): Promise<ActionResult> {
   if (!isAdmin(ctx)) return forbidden;
   const { data: meter } = await ctx.supabase.from("utility_meters").select(METER_COLUMNS).eq("id", id).maybeSingle();
   if (!meter || !isProvider(meter.provider)) return { ok: false, error: "That meter couldn't be found." };
-  const outcome = await checkMeter(createSupabaseAdmin(), { ...meter, provider: meter.provider });
+  const outcome = await checkMeter(createSupabaseAdmin(), { ...meter, provider: meter.provider }, { onNewBill: onBillArrived });
   revalidatePath("/bills");
   revalidatePath("/dashboard");
   return outcomeMessage(outcome, meter.label);

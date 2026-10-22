@@ -4,7 +4,6 @@ import { parseLescoBill, type LescoBill } from "@/lib/lesco/parse";
 import { billAssets, buildBillSnapshot } from "@/lib/lesco/snapshot";
 import { PROVIDERS, type Provider } from "@/lib/utilities/providers";
 import { readBillText } from "@/lib/utilities/read-bill-text";
-import { onBillArrived } from "@/server/notify/events";
 
 const UA = "Mozilla/5.0 (compatible; GharHisaab bill check; one request per meter per day)";
 const LESCO = "https://bill.pitc.com.pk";
@@ -178,7 +177,9 @@ async function fetchWasa(account: string): Promise<Fetched> {
 }
 
 /** Downloads the current bill for one meter, saves a copy and records it. Uses the service-role client. */
-export async function checkMeter(db: SupabaseClient, meter: Meter): Promise<CheckOutcome> {
+export type CheckOptions = { onNewBill?: (householdId: string, meterId: string, billMonth: string) => void };
+
+export async function checkMeter(db: SupabaseClient, meter: Meter, opts: CheckOptions = {}): Promise<CheckOutcome> {
   lastFailure = "";
   const finish = async (outcome: CheckOutcome) => {
     await db.from("utility_meters").update({ last_checked_at: new Date().toISOString(), last_error: outcome.status === "error" ? outcome.message : null }).eq("id", meter.id);
@@ -233,12 +234,12 @@ export async function checkMeter(db: SupabaseClient, meter: Meter): Promise<Chec
     { onConflict: "meter_id,bill_month" },
   );
   if (saved.error) return finish({ status: "error", message: "The bill was read but couldn't be recorded. It will be tried again tomorrow." });
-  if (!existing) onBillArrived(meter.household_id, meter.id, bill.billMonth);
+  if (!existing) opts.onNewBill?.(meter.household_id, meter.id, bill.billMonth);
   return finish({ status: existing ? "unchanged" : "new", bill });
 }
 
 /** Daily run: checks every active fetchable meter whose bill for the current month isn't in yet. */
-export async function checkAllMeters(db: SupabaseClient, today: string, budgetMs = 270_000) {
+export async function checkAllMeters(db: SupabaseClient, today: string, budgetMs = 270_000, opts: CheckOptions = {}) {
   const started = Date.now();
   const thisMonth = `${today.slice(0, 7)}-01`;
   const fetchable = Object.values(PROVIDERS).filter((p) => p.fetches).map((p) => p.id);
@@ -249,10 +250,11 @@ export async function checkAllMeters(db: SupabaseClient, today: string, budgetMs
     if (Date.now() - started > budgetMs) break;
     const { data: have } = await db.from("utility_bills").select("id").eq("meter_id", m.id).gte("bill_month", thisMonth).limit(1);
     if (have?.length) {
+      await db.from("utility_meters").update({ last_error: null }).eq("id", m.id).not("last_error", "is", null);
       results.push({ meter: m.id, status: "already have this month" });
       continue;
     }
-    const r = await checkMeter(db, m as Meter);
+    const r = await checkMeter(db, m as Meter, opts);
     results.push({ meter: m.id, status: r.status });
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
