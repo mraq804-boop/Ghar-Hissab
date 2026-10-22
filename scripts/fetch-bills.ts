@@ -22,6 +22,10 @@ async function main() {
   const tally = results.reduce<Record<string, number>>((a, r) => ({ ...a, [r.status]: (a[r.status] ?? 0) + 1 }), {});
   console.log(`Checked ${results.length} connection(s) on ${today}:`, JSON.stringify(tally));
 
+  const started = Date.now();
+  const probe = await fetch("https://bill.pitc.com.pk/lescobill", { signal: AbortSignal.timeout(40_000) }).catch((e: { name?: string; cause?: { code?: string } }) => e.cause?.code ?? e.name ?? "failed");
+  console.log(`LESCO from this server: ${typeof probe === "string" ? `not reachable (${probe})` : `HTTP ${probe.status}`} in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+
   const { data: errors } = await db.from("utility_meters").select("label, last_error").not("last_error", "is", null);
   for (const e of errors ?? []) console.log(`  ${e.label}: ${e.last_error}`);
 
