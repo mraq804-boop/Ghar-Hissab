@@ -68,6 +68,9 @@ export async function inviteMember(memberId: string, role: "admin" | "member"): 
   if (!member?.email) return { ok: false, error: "Add an email address to this member first." };
   if (member.user_id) return { ok: false, error: "This member already has an account." };
   if (!member.active) return { ok: false, error: "Reactivate this member before inviting them." };
+  if (/localhost|127\.0\.0\.1/.test(publicEnv.NEXT_PUBLIC_SITE_URL)) {
+    return { ok: false, error: "Send invites from the live app (ghar-hissab.vercel.app). From this computer the email link would point to localhost." };
+  }
 
   await ctx.supabase.from("household_invites").delete().eq("member_id", memberId).is("accepted_at", null);
   const { error: invErr } = await ctx.supabase
