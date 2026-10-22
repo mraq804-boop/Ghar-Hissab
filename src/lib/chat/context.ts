@@ -51,7 +51,9 @@ export type ChatMeter = {
   history: { month: string; units: number }[];
 };
 
-export type ChatPersonal ={ date: string; category: string; amountPaisa: Paisa }[];
+export type ChatPlanItem = { month: string; title: string; category: string; estimatePaisa: Paisa; actualPaisa: Paisa | null; status: string; dueDate: string | null };
+
+export type ChatPersonal = { date: string; category: string; amountPaisa: Paisa }[];
 
 export type ChatScope = { seeExpenses: boolean; seeAllBalances: boolean; ownUnit: string | null };
 
@@ -76,6 +78,7 @@ export function buildChatContext(input: {
   bills?: ChatBill[];
   personal?: ChatPersonal;
   meters?: ChatMeter[];
+  plan?: ChatPlanItem[];
   scope: ChatScope;
 }): string {
   const { scope } = input;
@@ -159,6 +162,22 @@ export function buildChatContext(input: {
           : `${m.used} units used (latest reading ${m.latest} on ${m.latestAt?.slice(0, 10)}), ${Math.max(0, m.limit - m.used)} units left before the limit${m.projected !== null ? `, projected ${m.projected} units by ${m.nextReadingDate}` : ""}${m.allowancePerDay !== null ? `, about ${m.allowancePerDay} units a day allowed to stay under` : ""}`;
       lines.push(`${m.label}: limit ${m.limit} units a month. LESCO read ${m.baseline} on ${m.baselineDate}; next reading about ${m.nextReadingDate}. ${now}.`);
       if (m.history.length) lines.push(`${m.label} units in recent months (from the bill): ${m.history.map((h) => `${h.month} ${h.units}`).join(", ")}.`);
+    }
+  }
+  if (input.plan?.length) {
+    lines.push("", "## The asker's own planned spending (private to the asker)");
+    const months = [...new Set(input.plan.map((p) => p.month))];
+    for (const m of months) {
+      const items = input.plan.filter((p) => p.month === m && p.status !== "skipped");
+      const open = items.filter((p) => p.status === "planned");
+      const left = open.reduce((a, p) => a + p.estimatePaisa, 0n);
+      const total = items.reduce((a, p) => a + (p.status === "bought" ? (p.actualPaisa ?? p.estimatePaisa) : p.estimatePaisa), 0n);
+      lines.push(`${m}: ${items.length} items planned, ${rs(total)} in total; ${open.length} still to buy for ${rs(left)}.`);
+      lines.push("Items (title | category | estimate | status | date):");
+      for (const p of input.plan.filter((x) => x.month === m)) {
+        const status = p.status === "bought" ? `bought for ${rs(p.actualPaisa ?? p.estimatePaisa)}` : p.status;
+        lines.push(`${p.title} | ${p.category} | ${rs(p.estimatePaisa)} | ${status} | ${p.dueDate ?? "-"}`);
+      }
     }
   }
   if (input.personal?.length) {

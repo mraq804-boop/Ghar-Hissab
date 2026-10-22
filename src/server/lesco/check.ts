@@ -21,15 +21,34 @@ type Fetched = { ok: true; html: string; bill: FetchedBill; site: string } | { o
 
 const assetCache = new Map<string, { at: number; value: string }>();
 
-async function get(url: string, timeoutMs = 20_000) {
-  return fetch(url, { headers: { "User-Agent": UA, Accept: "text/html,text/css,image/*;q=0.8" }, signal: AbortSignal.timeout(timeoutMs), cache: "no-store" });
+const TIMEOUT = 40_000;
+let lastFailure = "";
+
+/** Why a request failed, in a few words, for the meter's error note. */
+function failure(e: unknown) {
+  const err = e as { name?: string; cause?: { code?: string } };
+  if (err?.name === "TimeoutError" || err?.name === "AbortError") return "no answer within 40 seconds";
+  return err?.cause?.code ? `connection failed: ${err.cause.code}` : "connection failed";
+}
+
+async function attempt(url: string | URL, init: RequestInit): Promise<Response | null> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT), cache: "no-store" });
+  } catch (e) {
+    lastFailure = failure(e);
+    return null;
+  }
+}
+
+async function get(url: string) {
+  return attempt(url, { headers: { "User-Agent": UA, Accept: "text/html,text/css,image/*;q=0.8" } });
 }
 
 async function asset(site: string, path: string, kind: "css" | "image") {
   const key = site + path;
   const hit = assetCache.get(key);
   if (hit && Date.now() - hit.at < 12 * 3600_000) return hit.value;
-  const res = await get(site + path).catch(() => null);
+  const res = await get(site + path);
   if (!res?.ok) return null;
   let value: string;
   if (kind === "css") value = await res.text();
@@ -44,7 +63,7 @@ async function asset(site: string, path: string, kind: "css" | "image") {
   return value;
 }
 
-const unreachable = (name: string) => `Couldn't reach ${name}'s bill site. It will be tried again tomorrow.`;
+const unreachable = (name: string) => `Couldn't reach ${name}'s bill site (${lastFailure || "no answer"}). It will be tried again tomorrow.`;
 
 export function providerSiteUrl(provider: Provider) {
   return PROVIDERS[provider].siteUrl;
@@ -66,7 +85,7 @@ function cookiesFrom(res: Response, jar: Map<string, string>) {
 /** LESCO: load the search form, submit the reference number and follow the redirect to the bill. */
 async function fetchLesco(referenceNo: string): Promise<Fetched> {
   const jar = new Map<string, string>();
-  const form = await get(`${LESCO}/lescobill`).catch(() => null);
+  const form = await get(`${LESCO}/lescobill`);
   if (!form?.ok) return { ok: false, message: unreachable("LESCO") };
   const formHtml = await form.text();
   cookiesFrom(form, jar);
@@ -85,19 +104,17 @@ async function fetchLesco(referenceNo: string): Promise<Fetched> {
     ruCodeTextBox: ruCode,
     btnSearch: "Search",
   });
-  let res = await fetch(`${LESCO}/lescobill`, {
+  let res = await attempt(`${LESCO}/lescobill`, {
     method: "POST",
     redirect: "manual",
     headers: { "User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded", Cookie: cookiesFrom(form, jar), Referer: `${LESCO}/lescobill`, Origin: LESCO },
     body,
-    signal: AbortSignal.timeout(20_000),
-    cache: "no-store",
-  }).catch(() => null);
+  });
   for (let hop = 0; res && res.status >= 300 && res.status < 400 && hop < 3; hop++) {
     const next = new URL(res.headers.get("location") ?? "/lescobill", `${LESCO}/lescobill`);
     if (next.origin !== LESCO) return { ok: false, message: "LESCO sent the request somewhere unexpected, so it was stopped." };
     const cookie = cookiesFrom(res, jar);
-    res = await fetch(next, { redirect: "manual", headers: { "User-Agent": UA, Cookie: cookie, Referer: `${LESCO}/lescobill` }, signal: AbortSignal.timeout(20_000), cache: "no-store" }).catch(() => null);
+    res = await attempt(next, { redirect: "manual", headers: { "User-Agent": UA, Cookie: cookie, Referer: `${LESCO}/lescobill` } });
   }
   if (!res) return { ok: false, message: unreachable("LESCO") };
   if (!res.ok) return { ok: false, message: `LESCO's bill site answered with an error (${res.status}). It will be tried again tomorrow.` };
@@ -132,7 +149,7 @@ function htmlToLines(html: string) {
 
 /** WASA Lahore: the duplicate bill page takes the account number in the address. */
 async function fetchWasa(account: string): Promise<Fetched> {
-  const res = await get(`${WASA}/DuplicateBill/showBill?acctnum=${encodeURIComponent(account)}`).catch(() => null);
+  const res = await get(`${WASA}/DuplicateBill/showBill?acctnum=${encodeURIComponent(account)}`);
   if (!res) return { ok: false, message: unreachable("WASA") };
   if (!res.ok) return { ok: false, message: `WASA's bill site answered with an error (${res.status}). It will be tried again tomorrow.` };
   const html = await res.text();
@@ -162,6 +179,7 @@ async function fetchWasa(account: string): Promise<Fetched> {
 
 /** Downloads the current bill for one meter, saves a copy and records it. Uses the service-role client. */
 export async function checkMeter(db: SupabaseClient, meter: Meter): Promise<CheckOutcome> {
+  lastFailure = "";
   const finish = async (outcome: CheckOutcome) => {
     await db.from("utility_meters").update({ last_checked_at: new Date().toISOString(), last_error: outcome.status === "error" ? outcome.message : null }).eq("id", meter.id);
     return outcome;
@@ -220,7 +238,7 @@ export async function checkMeter(db: SupabaseClient, meter: Meter): Promise<Chec
 }
 
 /** Daily run: checks every active fetchable meter whose bill for the current month isn't in yet. */
-export async function checkAllMeters(db: SupabaseClient, today: string, budgetMs = 50_000) {
+export async function checkAllMeters(db: SupabaseClient, today: string, budgetMs = 270_000) {
   const started = Date.now();
   const thisMonth = `${today.slice(0, 7)}-01`;
   const fetchable = Object.values(PROVIDERS).filter((p) => p.fetches).map((p) => p.id);

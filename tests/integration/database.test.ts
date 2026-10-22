@@ -539,3 +539,20 @@ describe("notifications and reminders", () => {
     expect(await rpc(STRANGER, `select id from public.reminders`)).toEqual([]);
   });
 });
+
+describe("personal plans", () => {
+  it("the owner plans items for a month; nobody else can see or change them", async () => {
+    const [{ id }] = await rpc<{ id: string }>(AK_USER, `insert into public.personal_plan_items (month, title, estimate, due_date, repeat_monthly) values ('2026-11-01', 'Petrol', 12000, '2026-11-05', true) returning id`);
+    expect(await rpc(AK_USER, `select title, estimate from public.personal_plan_items`)).toEqual([{ title: "Petrol", estimate: "12000.00" }]);
+    for (const other of [ADMIN, AB_USER, STRANGER]) {
+      expect(await rpc(other, `select id from public.personal_plan_items`)).toEqual([]);
+      expect(await rpc(other, `update public.personal_plan_items set estimate = 1 where id = $1 returning id`, [id])).toEqual([]);
+    }
+  });
+
+  it("keeps due dates inside the month and refuses links to someone else's spending", async () => {
+    await expectDbError(rpc(AK_USER, `insert into public.personal_plan_items (month, title, estimate, due_date) values ('2026-11-01', 'Late', 5, '2026-12-01')`), /check/);
+    const [{ id: abExpense }] = await rpc<{ id: string }>(AB_USER, `insert into public.personal_expenses (amount, spent_on) values (50, '2026-11-02') returning id`);
+    await expectDbError(rpc(AK_USER, `insert into public.personal_plan_items (month, title, estimate, expense_id) values ('2026-11-01', 'X', 5, $1)`, [abExpense]), /row-level security/);
+  });
+});

@@ -21,6 +21,7 @@ import { guessPersonalCategory, type BudgetStatus } from "@/lib/personal/budget"
 import { parseQuickEntry } from "@/lib/smart/suggest";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 import { cn } from "@/lib/utils";
+import { MeTabs } from "./plan/plan-board";
 import { deletePersonalExpense, personalReceiptUrl, savePersonalBudget, savePersonalCategory, savePersonalExpense } from "./actions";
 
 type Category = { id: string; name: string; sort_order: number; active: boolean };
@@ -43,6 +44,7 @@ export type PersonalView = {
   breakdown: { name: string; id: string | null; total: number; last: number }[];
   expenses: Expense[];
   history: { note: string | null; categoryName: string | null }[];
+  plan: { planned: number; remaining: number; toBuy: number } | null;
 };
 
 const rs = (n: number) => `Rs ${Math.round(n).toLocaleString("en-US")}`;
@@ -83,7 +85,8 @@ export function PersonalBoard({ view }: { view: PersonalView }) {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+        <div className="space-y-3">
+          <MeTabs active="spent" />
           <h1 className="font-heading text-3xl font-bold">My spending</h1>
           <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground"><Lock className="size-3.5" /> Only you can see this. It isn&apos;t shared with the family or added to the household sheet.</p>
         </div>
@@ -106,6 +109,14 @@ export function PersonalBoard({ view }: { view: PersonalView }) {
         <p className="mt-1 text-center text-sm text-muted-foreground">
           {change === null ? "spent this month" : `${change === 0 ? "same as" : change > 0 ? `${change}% more than` : `${-change}% less than`} ${view.previousLabel} (${rs(view.lastTotal)})`}
         </p>
+        {view.plan ? (
+          <p className="mt-2 text-center text-sm">
+            <Link href={`/me/plan?m=${view.month}`} className="text-primary underline-offset-2 hover:underline">
+              Planned this month: Rs {Math.round(view.plan.planned).toLocaleString("en-US")}
+              {view.plan.toBuy ? `, Rs ${Math.round(view.plan.remaining).toLocaleString("en-US")} still to buy (${view.plan.toBuy})` : ", all bought"}
+            </Link>
+          </p>
+        ) : null}
         {view.overallBudget ? (
           <div className="mx-auto mt-4 max-w-md">
             <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={Math.min(100, view.overallBudget.percent)} aria-valuemin={0} aria-valuemax={100} aria-label="Monthly budget used">

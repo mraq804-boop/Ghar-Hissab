@@ -139,3 +139,18 @@ describe("meter watch in the chat data", () => {
     expect(text).toContain("AQ 1 units in recent months (from the bill): 2026-09 148.");
   });
 });
+
+describe("personal plan in the chat data", () => {
+  it("summarises each month's plan and lists items with their status", () => {
+    const text = buildChatContext({
+      ...base,
+      scope: { seeExpenses: true, seeAllBalances: true, ownUnit: "AQ" },
+      plan: [
+        { month: "2026-11", title: "Petrol", category: "Fuel", estimatePaisa: rs(12000), actualPaisa: rs(11500), status: "bought", dueDate: "2026-11-05" },
+        { month: "2026-11", title: "Shoes", category: "Clothes", estimatePaisa: rs(6000), actualPaisa: null, status: "planned", dueDate: null },
+      ],
+    });
+    expect(text).toContain("2026-11: 2 items planned, Rs 17,500 in total; 1 still to buy for Rs 6,000.");
+    expect(text).toContain("Petrol | Fuel | Rs 12,000 | bought for Rs 11,500 | 2026-11-05");
+  });
+});

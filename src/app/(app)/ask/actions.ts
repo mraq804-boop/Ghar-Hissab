@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { describeSpec, ruleToSpec } from "@/lib/finance";
-import { buildChatContext, CHAT_INSTRUCTIONS, type ChatBill, type ChatMonth, type ChatPersonal } from "@/lib/chat/context";
+import { buildChatContext, CHAT_INSTRUCTIONS, type ChatBill, type ChatMonth, type ChatPersonal, type ChatPlanItem } from "@/lib/chat/context";
 import { PROVIDERS, isProvider } from "@/lib/utilities/providers";
 import { methodLabel } from "@/lib/labels";
 import { periodLabel } from "@/lib/periods";
@@ -96,6 +96,25 @@ export async function askQuestion(input: { role: "user" | "assistant"; text: str
     amountPaisa: toPaisa(r.amount)!,
   }));
 
+  const nowMonth = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi" }).format(new Date()).slice(0, 7);
+  const [ny, nm] = nowMonth.split("-").map(Number);
+  const nextMonth = nm === 12 ? `${ny + 1}-01` : `${ny}-${String(nm + 1).padStart(2, "0")}`;
+  const { data: planRows } = await ctx.supabase
+    .from("personal_plan_items")
+    .select("month, title, category_id, estimate, status, due_date, personal_expenses(amount)")
+    .eq("user_id", ctx.userId)
+    .in("month", [`${nowMonth}-01`, `${nextMonth}-01`])
+    .order("month");
+  const plan: ChatPlanItem[] = (planRows ?? []).map((r) => ({
+    month: r.month.slice(0, 7),
+    title: r.title,
+    category: ownCats?.find((c) => c.id === r.category_id)?.name ?? "Other",
+    estimatePaisa: toPaisa(r.estimate)!,
+    actualPaisa: (r.personal_expenses as unknown as { amount: string } | null) ? toPaisa((r.personal_expenses as unknown as { amount: string }).amount) : null,
+    status: r.status,
+    dueDate: r.due_date,
+  }));
+
   const data = buildChatContext({
     today: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi" }).format(new Date()),
     households: ref.units.filter((u) => u.active).map((u) => ({ code: u.code, isPurseHolder: u.is_purse_holder })),
@@ -103,6 +122,7 @@ export async function askQuestion(input: { role: "user" | "assistant"; text: str
     months,
     bills,
     personal,
+    plan,
     meters: (await getMeterWatches()).map((w) => ({ label: w.label, limit: w.limit, baseline: w.baseline, baselineDate: w.baselineDate, nextReadingDate: w.nextReadingDate, latest: w.latest, latestAt: w.latestAt, used: w.used, projected: w.projected, allowancePerDay: w.allowancePerDay, history: w.history })),
     scope: {
       seeExpenses: isAdmin(ctx) || ctx.settings.membersSeeAllExpenses,

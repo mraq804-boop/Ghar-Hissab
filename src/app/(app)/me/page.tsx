@@ -7,6 +7,7 @@ import { budgetStatus, daysIn } from "@/lib/personal/budget";
 import { MONTHS_LONG } from "@/lib/periods";
 import { getContext } from "@/server/auth";
 import { getPersonalMonth, previousMonth } from "@/server/data/personal";
+import { planSummary, type PlanItem } from "@/lib/personal/plan";
 import { PersonalBoard, type PersonalView } from "./personal-board";
 
 export const metadata: Metadata = { title: "My spending" };
@@ -17,6 +18,24 @@ export default function MePage({ searchParams }: PageProps<"/me">) {
       <Me searchParams={searchParams} />
     </Suspense>
   );
+}
+
+async function monthPlan(month: string) {
+  const ctx = await getContext();
+  const { data, error } = await ctx.supabase.from("personal_plan_items").select("id, title, category_id, estimate, status, personal_expenses(amount)").eq("month", `${month}-01`);
+  if (error || !data.length) return null;
+  const items: PlanItem[] = (data as unknown as { id: string; title: string; category_id: string | null; estimate: string; status: PlanItem["status"]; personal_expenses: { amount: string } | null }[]).map((r) => ({
+    id: r.id,
+    title: r.title,
+    categoryId: r.category_id,
+    estimate: Number(r.estimate),
+    dueDate: null,
+    repeatMonthly: false,
+    status: r.status,
+    actual: r.personal_expenses ? Number(r.personal_expenses.amount) : null,
+  }));
+  const s = planSummary(items, null);
+  return { planned: s.planned, remaining: s.remaining, toBuy: s.toBuy };
 }
 
 const label = (month: string) => `${MONTHS_LONG[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
@@ -89,6 +108,7 @@ async function Me({ searchParams }: { searchParams: PageProps<"/me">["searchPara
     breakdown: [...byCategory].map(([n, c]) => ({ name: n, ...c })).filter((c) => c.total > 0 || c.last > 0).sort((a, b) => b.total - a.total),
     expenses: data.expenses.map((e) => ({ ...e, amount: Number(e.amount), categoryName: name(e.category_id) })),
     history: data.history,
+    plan: await monthPlan(month),
   };
 
   return <PersonalBoard view={view} />;

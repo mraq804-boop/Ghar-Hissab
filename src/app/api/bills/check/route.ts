@@ -3,7 +3,8 @@ import { timingSafeEqual } from "node:crypto";
 import { checkAllMeters } from "@/server/lesco/check";
 import { createSupabaseAdmin } from "@/server/supabase/admin";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
+export const preferredRegion = "fra1";
 
 function authorized(request: NextRequest, secret: string) {
   const a = Buffer.from(request.headers.get("authorization") ?? "");

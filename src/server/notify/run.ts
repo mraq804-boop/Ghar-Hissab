@@ -12,6 +12,15 @@ import { deliverDue, notify } from "./push";
 const dayMonth = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 const rs = (n: number) => `Rs ${Math.round(n).toLocaleString("en-US")}`;
 
+const householdCache = new Map<string, string | null>();
+async function householdOf(db: SupabaseClient, userId: string) {
+  if (!householdCache.has(userId)) {
+    const { data } = await db.from("household_roles").select("household_id").eq("user_id", userId).limit(1).maybeSingle();
+    householdCache.set(userId, data?.household_id ?? null);
+  }
+  return householdCache.get(userId) ?? null;
+}
+
 /** One pass of every scheduled notification. Safe to run often: each message is sent once per key. */
 export async function runScheduled(db: SupabaseClient, now = new Date()) {
   const local = karachi(now);
@@ -108,6 +117,40 @@ export async function runScheduled(db: SupabaseClient, now = new Date()) {
       add("reminders", r.created);
       const next = advancePast(new Date(rem.next_at), rem.repeat, now);
       await db.from("reminders").update(next ? { next_at: next.toISOString() } : { active: false }).eq("id", rem.id);
+    }
+  }
+
+  if (local.hour >= 9) {
+    const { data: duePlans } = await db
+      .from("personal_plan_items")
+      .select("id, user_id, title, estimate")
+      .eq("due_date", local.date)
+      .eq("status", "planned")
+      .is("reminded_at", null);
+    for (const p of duePlans ?? []) {
+      const householdId = await householdOf(db, p.user_id);
+      if (!householdId) continue;
+      const r = await notify(householdId, [p.user_id], { category: "personal", title: `${p.title} today`, body: `Planned ${rs(Number(p.estimate))}. Tap "Bought" when done.`, url: "/me/plan", dedupeKey: `plan-${p.id}` }, db);
+      add("planDue", r.created);
+      await db.from("personal_plan_items").update({ reminded_at: now.toISOString() }).eq("id", p.id);
+    }
+  }
+
+  if (local.day === 1 && local.hour >= 9) {
+    const monthStart = `${local.date.slice(0, 7)}-01`;
+    const { data: plans } = await db.from("personal_plan_items").select("user_id, estimate").eq("month", monthStart).eq("status", "planned");
+    const byUser = new Map<string, { count: number; total: number }>();
+    for (const p of plans ?? []) {
+      const u = byUser.get(p.user_id) ?? { count: 0, total: 0 };
+      u.count++;
+      u.total += Number(p.estimate);
+      byUser.set(p.user_id, u);
+    }
+    for (const [userId, s] of byUser) {
+      const householdId = await householdOf(db, userId);
+      if (!householdId) continue;
+      const r = await notify(householdId, [userId], { category: "personal", title: `Your ${MONTHS_LONG[local.month - 1]} plan: ${s.count} item${s.count === 1 ? "" : "s"}, ${rs(s.total)}`, body: "Tap to see what's planned this month.", url: "/me/plan", dedupeKey: `plan-month-${monthStart}` }, db);
+      add("planMonth", r.created);
     }
   }
 

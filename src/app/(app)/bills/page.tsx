@@ -10,6 +10,8 @@ import { isProvider } from "@/lib/utilities/providers";
 import { BillsBoard, type BillView, type MeterView } from "./bills-board";
 
 export const metadata: Metadata = { title: "Bills" };
+export const preferredRegion = "fra1";
+export const maxDuration = 300;
 
 export default function BillsPage() {
   return (
