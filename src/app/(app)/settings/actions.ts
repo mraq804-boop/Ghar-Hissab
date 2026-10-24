@@ -38,6 +38,7 @@ const categorySchema = z.object({
   sectionId: z.uuid(),
   ruleId: z.uuid().nullable(),
   active: z.boolean().default(true),
+  kind: z.enum(["essential", "variable"]).default("essential"),
 });
 
 export async function saveCategory(input: z.input<typeof categorySchema>): Promise<ActionResult> {
@@ -45,12 +46,13 @@ export async function saveCategory(input: z.input<typeof categorySchema>): Promi
   if (!isAdmin(ctx)) return forbidden;
   const p = categorySchema.safeParse(input);
   if (!p.success) return invalid(p.error);
-  const row = { household_id: ctx.householdId, name: p.data.name, section_id: p.data.sectionId, default_split_rule_id: p.data.ruleId, active: p.data.active };
+  const row = { household_id: ctx.householdId, name: p.data.name, section_id: p.data.sectionId, default_split_rule_id: p.data.ruleId, active: p.data.active, kind: p.data.kind };
   const { error } = p.data.id
     ? await ctx.supabase.from("expense_categories").update(row).eq("id", p.data.id)
     : await ctx.supabase.from("expense_categories").insert({ ...row, sort_order: 100 });
   if (error) return dbError(error);
   revalidatePath("/settings");
+  revalidatePath("/dashboard");
   return { ok: true, data: undefined, message: p.data.id ? "Category updated" : "Category added" };
 }
 

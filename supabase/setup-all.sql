@@ -1870,3 +1870,15 @@ create policy personal_plan_items_own on public.personal_plan_items for all to a
     and (expense_id is null or exists (select 1 from public.personal_expenses e where e.id = expense_id and e.user_id = (select auth.uid())))
     and (category_id is null or exists (select 1 from public.personal_categories c where c.id = category_id and c.user_id = (select auth.uid())))
   );
+
+-- ---- 20261024000015_category_kind.sql ----
+-- Group expense categories into essential (must-pay) and variable (food that changes month to month)
+-- for the dashboard filter. View only: it doesn't change any split.
+
+alter table public.expense_categories
+  add column if not exists kind text not null default 'essential' check (kind in ('essential', 'variable'));
+
+update public.expense_categories
+set kind = 'variable'
+where kind = 'essential'
+  and (name ilike 'milk%' or name ilike '%sabzi%' or name ilike 'vegetable%' or name ilike '%chicken%' or name ilike '%meat%');

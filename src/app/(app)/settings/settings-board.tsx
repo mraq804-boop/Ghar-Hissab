@@ -16,7 +16,7 @@ import { ResponsiveDialog } from "@/components/ledger/responsive-dialog";
 import { createRule, saveCategory, saveSettings, setRuleActive } from "./actions";
 
 type Settings = { membersSeeAllExpenses: boolean; membersSeeAllBalances: boolean; membersSeeReports: boolean; maxUploadMb: number };
-type Category = { id: string; name: string; section_id: string; default_split_rule_id: string | null; active: boolean };
+type Category = { id: string; name: string; section_id: string; default_split_rule_id: string | null; active: boolean; kind: "essential" | "variable" };
 type Rule = { id: string; name: string; description: string | null; system: boolean; active: boolean; summary: string };
 const NONE = "__none";
 
@@ -100,6 +100,9 @@ function Categories({ sections, categories, rules }: { sections: { id: string; t
               <p className={`text-sm font-medium ${c.active ? "" : "text-muted-foreground line-through"}`}>{c.name}</p>
               <p className="text-xs text-muted-foreground">{sections.find((s) => s.id === c.section_id)?.title}, {rules.find((r) => r.id === c.default_split_rule_id)?.name ?? "no default rule"}</p>
             </div>
+            <div className="shrink-0">
+              <span className={`rounded-full px-2 py-0.5 text-xs ${c.kind === "variable" ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}`}>{c.kind === "variable" ? "Daily food" : "Must-pay"}</span>
+            </div>
             <Button variant="ghost" size="sm" onClick={() => setEditing(c)}>Edit</Button>
           </li>
         ))}
@@ -116,6 +119,7 @@ function CategoryForm({ initial, sections, rules, onDone }: { initial: Partial<C
   const [sectionId, setSectionId] = useState(initial.section_id ?? sections[0]?.id ?? "");
   const [ruleId, setRuleId] = useState(initial.default_split_rule_id ?? NONE);
   const [active, setActive] = useState(initial.active ?? true);
+  const [kind, setKind] = useState<"essential" | "variable">(initial.kind ?? "essential");
   const [pending, start] = useTransition();
   return (
     <form
@@ -123,7 +127,7 @@ function CategoryForm({ initial, sections, rules, onDone }: { initial: Partial<C
       onSubmit={(e) => {
         e.preventDefault();
         start(async () => {
-          const r = await saveCategory({ id: initial.id, name, sectionId, ruleId: ruleId === NONE ? null : ruleId, active });
+          const r = await saveCategory({ id: initial.id, name, sectionId, ruleId: ruleId === NONE ? null : ruleId, active, kind });
           if (r.ok) {
             toast.success(r.message);
             onDone();
@@ -144,6 +148,15 @@ function CategoryForm({ initial, sections, rules, onDone }: { initial: Partial<C
           <SelectContent>
             <SelectItem value={NONE}>None</SelectItem>
             {rules.filter((r) => r.active).map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Dashboard group" htmlFor="cat-kind">
+        <Select value={kind} onValueChange={(v) => setKind(v as "essential" | "variable")}>
+          <SelectTrigger id="cat-kind" className="h-10 w-full"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="essential">Must-pay: bills, groceries, maid and other fixed costs</SelectItem>
+            <SelectItem value="variable">Daily food: milk, sabzi, chicken, mutton and keema</SelectItem>
           </SelectContent>
         </Select>
       </Field>

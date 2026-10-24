@@ -35,6 +35,7 @@ export type Category = {
   icon: string | null;
   sort_order: number;
   active: boolean;
+  kind: "essential" | "variable";
 };
 
 export type ExpenseRow = {
@@ -90,15 +91,21 @@ export const getReference = cache(async () => {
     db.from("units").select("id, code, name, sort_order, is_purse_holder, active").order("sort_order"),
     db.from("expense_sections").select("id, key, title, sort_order").order("sort_order"),
     db.from("split_rules").select("id, name, type, description, is_system, active, parts:split_rule_parts(unit_id, num, den, percent)").order("name"),
-    db.from("expense_categories").select("id, name, section_id, default_split_rule_id, icon, sort_order, active").order("sort_order"),
+    db.from("expense_categories").select("id, name, section_id, default_split_rule_id, icon, sort_order, active, kind").order("sort_order"),
     db.from("periods").select("id, year, month, status, sheet_name").order("year", { ascending: false }).order("month", { ascending: false }),
   ]);
-  for (const r of [units, sections, rules, categories, periods]) if (r.error) throw r.error;
+  let categoryRows = categories.data as Category[] | null;
+  if (categories.error?.code === "42703") {
+    const plain = await db.from("expense_categories").select("id, name, section_id, default_split_rule_id, icon, sort_order, active").order("sort_order");
+    if (plain.error) throw plain.error;
+    categoryRows = (plain.data as Omit<Category, "kind">[]).map((c) => ({ ...c, kind: /milk|sabzi|vegetable|chicken|meat/i.test(c.name) ? "variable" : "essential" }));
+  } else if (categories.error) throw categories.error;
+  for (const r of [units, sections, rules, periods]) if (r.error) throw r.error;
   return {
     units: units.data as Unit[],
     sections: sections.data as Section[],
     rules: rules.data as Rule[],
-    categories: categories.data as Category[],
+    categories: categoryRows as Category[],
     periods: periods.data as Period[],
   };
 });

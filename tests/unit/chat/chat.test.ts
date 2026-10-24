@@ -41,7 +41,8 @@ describe("buildChatContext", () => {
     expect(text).toContain("Gets money back: AQ Rs 564.");
     expect(text).toContain("Chicken | Milk, sabzi, chicken & meat | Chicken & meat | Rs 10,500 | 21 × Rs 500 | Three-way pool | AQ | -");
     expect(text).toContain("Bills not issued yet (no amount): Water.");
-    expect(text).toContain("Totals by category, largest first: Chicken & meat Rs 10,500.");
+    expect(text).toContain("Totals by category, largest first: Chicken & meat (must-pay) Rs 10,500.");
+    expect(text).toContain("Shared spending by group: must-pay (bills, groceries, maid, household) Rs 10,500; daily food (milk, sabzi, chicken & meat) Rs 0.");
   });
 
   it("lists expenses largest first so the biggest is easy to find", () => {
@@ -56,7 +57,7 @@ describe("buildChatContext", () => {
     const text = buildChatContext({ ...base, months: [month], scope: { seeExpenses: true, seeAllBalances: true, ownUnit: "AQ" } });
     const order = ["Milk |", "Oil |", "Tea |"].map((t) => text.indexOf(t));
     expect(order).toEqual([...order].sort((a, b) => a - b));
-    expect(text).toContain("Totals by category, largest first: Milk Rs 12,000; Groceries Rs 10,000.");
+    expect(text).toContain("Totals by category, largest first: Milk (must-pay) Rs 12,000; Groceries (must-pay) Rs 10,000.");
     expect(text).toContain("Biggest single expense items: 1. Milk Rs 12,000; 2. Oil Rs 9,000; 3. Tea Rs 1,000.");
     expect(text).toContain("AK | Rs 19,000 | 2026-10-31 | JazzCash | approved");
   });

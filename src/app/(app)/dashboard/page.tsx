@@ -19,6 +19,8 @@ import { methodLabel } from "@/lib/labels";
 import { publicEnv } from "@/lib/env";
 import { buildMonthSummary } from "@/lib/smart/summary";
 import { ShareSummary } from "@/components/ledger/share-summary";
+import { CategoryFilter } from "@/components/dashboard/category-filter";
+import { KIND_LABEL } from "@/lib/dashboard/filter";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -34,7 +36,7 @@ const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : u
 
 async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard">["searchParams"] }) {
   const sp = await searchParams;
-  const d = await getDashboard({ m: one(sp.m), unit: one(sp.unit), cat: one(sp.cat) });
+  const d = await getDashboard({ m: one(sp.m), unit: one(sp.unit), cat: one(sp.cat), cats: one(sp.cats), group: one(sp.group) });
 
   if (d.empty) {
     return (
@@ -57,6 +59,23 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
       ? Math.round(((paisaToNumber(s.splitTotal) - paisaToNumber(d.previousSplitTotal)) / paisaToNumber(d.previousSplitTotal)) * 100)
       : null;
   const householdWord = s.units.length === 1 ? "household" : "households";
+  const filtered = d.filteredTotal !== null;
+  const headline = d.filteredTotal ?? s.splitTotal;
+  const headlineChange = filtered ? pctChange(d.filteredTotal!, d.previousFilteredTotal) : change;
+  const billsDue = d.billNotices.filter((b) => b.kind === "due").length + s.pendingBillCount;
+  const owing = s.units.filter((u) => u.balancePaisa < 0n).length;
+  const previousName = d.previousPeriod ? periodLabel(d.previousPeriod) : null;
+  const groupHref = (group?: string) => {
+    const q = new URLSearchParams();
+    for (const k of ["m", "unit"] as const) {
+      const v = one(sp[k]);
+      if (v) q.set(k, v);
+    }
+    if (group) q.set("group", group);
+    return `/dashboard${q.size ? `?${q}` : ""}`;
+  };
+  const kindSum = d.kinds.essential + d.kinds.variable;
+  const kindPct = (v: bigint) => (kindSum > 0n ? Math.round((paisaToNumber(v) / paisaToNumber(kindSum)) * 100) : 0);
   const summary = d.seeAll
     ? buildMonthSummary({
         monthLabel: periodLabel(d.period, true),
@@ -78,7 +97,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
           <span className="text-primary">Set up</span>
         </Link>
       ) : null}
-      <section aria-labelledby="statement" className="relative">
+      <section aria-labelledby="statement" className="space-y-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-3xl">
             <p className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -86,19 +105,19 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
               {d.period.status === "closed" ? <StatusBadge status="closed" compact /> : null}
             </p>
             <h1 id="statement" className="mt-2 font-heading text-[2rem] leading-[1.08] font-bold text-balance sm:text-[2.6rem] lg:text-[3rem]">
-              <span className="num">{formatPaisa(s.splitTotal)}</span> shared across {s.units.length} {householdWord}.
+              <span className="num">{formatPaisa(headline)}</span>{" "}
+              {filtered ? <>on {d.selection.label}.</> : <>shared across {s.units.length} {householdWord}.</>}
             </h1>
-            <p className="mt-3 text-lg text-muted-foreground sm:text-xl">
-              {d.outstanding > 0n ? (
+            <p className="mt-3 text-base text-muted-foreground sm:text-lg">
+              {filtered ? (
                 <>
-                  <span className="num font-semibold text-foreground">{formatPaisa(d.outstanding)}</span> still to collect.
+                  {d.selection.group || d.selection.names.length > 2 ? <span>{d.selection.names.join(", ")}. </span> : null}
+                  <span className="num">{formatPaisa(s.splitTotal)}</span> shared in all.{" "}
                 </>
-              ) : (
-                "Everyone has settled their share."
-              )}{" "}
-              {change !== null && d.previousPeriod ? (
+              ) : null}
+              {headlineChange !== null && d.previousPeriod ? (
                 <span>
-                  {change === 0 ? "Same as" : change > 0 ? `Up ${change}% on` : `Down ${Math.abs(change)}% on`} {periodLabel(d.previousPeriod, true)}.
+                  {headlineChange === 0 ? "Same as" : headlineChange > 0 ? `Up ${headlineChange}% on` : `Down ${Math.abs(headlineChange)}% on`} {periodLabel(d.previousPeriod, true)}.
                 </span>
               ) : null}
             </p>
@@ -111,27 +130,93 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
               allLabel="All households"
               options={d.units.map((u) => ({ value: u.code, label: `${u.code} household` }))}
             />
-            <UrlSelect
-              param="cat"
-              label="Category"
-              allLabel="All categories"
-              options={d.categoriesList.filter((c) => c.active).map((c) => ({ value: c.id, label: c.name }))}
-            />
           </div>
         </div>
 
-        <div className={cn("mt-7 grid overflow-hidden rounded-2xl border bg-card", d.visibleUnits.length > 1 && "md:grid-cols-3")}>
-          {d.visibleUnits.map((u, i) => {
+        <CategoryFilter categories={d.categoriesList} selectedIds={d.selection.ids} group={d.selection.group} />
+
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Tile icon={Receipt} label="Shared total" value={formatPaisa(s.splitTotal)} note={<ChangeNote value={change} previous={previousName} />} />
+          <Tile
+            icon={Wallet}
+            label="Collected"
+            tone="success"
+            value={formatPaisa(d.collected)}
+            note={<ChangeNote value={pctChange(d.collected, d.previousCollected)} previous={previousName} upIsGood />}
+          />
+          <Tile
+            icon={Clock3}
+            label="Still to collect"
+            tone={d.outstanding > 0n ? "warning" : "success"}
+            value={d.outstanding > 0n ? formatPaisa(d.outstanding) : "All settled"}
+            note={d.outstanding > 0n ? `${owing} household${owing === 1 ? "" : "s"} still to pay` : "Everyone has paid their share"}
+          />
+          <Tile
+            icon={Zap}
+            label="Bills due"
+            tone={billsDue ? "warning" : undefined}
+            value={billsDue ? String(billsDue) : "None"}
+            note={s.pendingBillCount ? `${s.pendingBillCount} not issued yet` : billsDue ? "See Needs attention" : "Nothing waiting"}
+          />
+        </div>
+
+        {kindSum > 0n ? (
+          <div className="rounded-2xl border bg-card p-4 sm:p-5">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="font-heading text-lg font-semibold">Must-pay vs daily food</h2>
+              <p className="text-xs text-muted-foreground">Tap a side to see only those categories</p>
+            </div>
+            <div className="mt-3 flex h-4 overflow-hidden rounded-full bg-muted" aria-hidden>
+              <div className="h-full bg-chart-1" style={{ width: `${kindPct(d.kinds.essential)}%` }} />
+              <div className="h-full bg-chart-3" style={{ width: `${kindPct(d.kinds.variable)}%` }} />
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {(["essential", "variable"] as const).map((k) => (
+                <Link
+                  key={k}
+                  href={d.selection.group === k ? groupHref() : groupHref(k)}
+                  scroll={false}
+                  aria-current={d.selection.group === k ? "true" : undefined}
+                  className={cn("flex items-center gap-3 rounded-xl border px-3 py-2.5 hover:bg-muted/50", d.selection.group === k && "border-primary bg-accent/40")}
+                >
+                  <span className={cn("size-3 shrink-0 rounded-full", k === "essential" ? "bg-chart-1" : "bg-chart-3")} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">
+                      {KIND_LABEL[k]} <span className="text-muted-foreground">· {kindPct(d.kinds[k])}%</span>
+                    </span>
+                    <span className="block text-xs text-muted-foreground">{k === "essential" ? "Bills, groceries, maid, household" : "Milk, sabzi, chicken & meat"}</span>
+                  </span>
+                  <span className="text-right">
+                    <span className="num block text-sm font-semibold">{formatPaisa(d.kinds[k])}</span>
+                    <span className="block text-xs">
+                      <ChangeNote value={d.previousKinds ? pctChange(d.kinds[k], d.previousKinds[k]) : null} previous={previousName} />
+                    </span>
+                  </span>
+                </Link>
+              ))}
+            </div>
+            {d.variableChanges.length ? (
+              <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <TrendingUp className="size-3.5 text-warning" /> Went up:
+                {d.variableChanges.map((v) => (
+                  <span key={v.name}>
+                    <span className="font-medium text-foreground">{v.name}</span> +<span className="num">{formatPaisa(v.now - v.before!)}</span>
+                  </span>
+                ))}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className={cn("-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 md:mx-0 md:grid md:overflow-visible md:px-0 md:pb-0", d.visibleUnits.length > 1 ? "md:grid-cols-3" : "md:grid-cols-1")}>
+          {d.visibleUnits.map((u) => {
             const pct = u.sharePaisa > 0n ? Math.min(100, Math.round((paisaToNumber(u.paidPaisa) / paisaToNumber(u.sharePaisa)) * 100)) : 0;
             const unit = d.units.find((x) => x.id === u.unitId);
+            const owes = u.balancePaisa < 0n;
             return (
               <article
                 key={u.unitId}
-                className={cn(
-                  "relative p-5 md:p-6",
-                  i > 0 && "border-t md:border-t-0 md:border-l",
-                  d.unitFilter?.id === u.unitId && "bg-accent/40",
-                )}
+                className={cn("w-[80%] shrink-0 snap-start rounded-2xl border bg-card p-4 sm:w-[60%] md:w-auto md:p-5", d.unitFilter?.id === u.unitId && "border-primary/60 bg-accent/30")}
               >
                 <header className="flex items-center justify-between gap-3">
                   <div className="flex items-baseline gap-2">
@@ -140,25 +225,34 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
                   </div>
                   <StatusBadge status={u.status} />
                 </header>
-                <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                  <dt className="text-muted-foreground">Share</dt>
-                  <dd className="text-right font-medium"><Money paisa={u.sharePaisa} /></dd>
-                  <dt className="text-muted-foreground">Paid</dt>
-                  <dd className="text-right font-medium"><Money paisa={u.paidPaisa} /></dd>
-                </dl>
+                <p className="mt-3 flex items-baseline justify-between gap-2 text-sm">
+                  <span className="text-muted-foreground">
+                    Paid <Money paisa={u.paidPaisa} className="font-medium text-foreground" /> of <Money paisa={u.sharePaisa} />
+                  </span>
+                  <span className="num text-xs text-muted-foreground">{pct}%</span>
+                </p>
                 <div
-                  className="mt-3 h-2 overflow-hidden rounded-full bg-muted"
+                  className="mt-2 h-2 overflow-hidden rounded-full bg-muted"
                   role="progressbar"
                   aria-label={`${u.code} has paid ${pct}% of their share`}
                   aria-valuenow={pct}
                   aria-valuemin={0}
                   aria-valuemax={100}
                 >
-                  <div className="h-full rounded-full bg-chart-2 transition-[width] duration-700" style={{ width: `${pct}%` }} />
+                  <div className={cn("h-full rounded-full transition-[width] duration-700", owes ? "bg-chart-2" : "bg-success")} style={{ width: `${pct}%` }} />
                 </div>
-                <p className="mt-4 flex items-baseline justify-between">
-                  <span className="text-sm text-muted-foreground">{u.balancePaisa >= 0n ? "Balance" : "Still owes"}</span>
-                  <Money paisa={u.balancePaisa < 0n ? -u.balancePaisa : u.balancePaisa} signed={u.balancePaisa > 0n} tone={u.balancePaisa < 0n ? undefined : "auto"} className={cn("font-heading text-xl font-bold", u.balancePaisa < 0n && "text-destructive")} />
+                <p className="mt-3">
+                  {u.balancePaisa === 0n ? (
+                    <span className="inline-flex rounded-full bg-success/15 px-2.5 py-1 text-xs font-medium text-success">Settled</span>
+                  ) : owes ? (
+                    <span className="inline-flex gap-1 rounded-full bg-danger-soft px-2.5 py-1 text-xs font-medium text-destructive">
+                      Owes <Money paisa={-u.balancePaisa} />
+                    </span>
+                  ) : (
+                    <span className="inline-flex gap-1 rounded-full bg-success/15 px-2.5 py-1 text-xs font-medium text-success">
+                      Gets back <Money paisa={u.balancePaisa} />
+                    </span>
+                  )}
                 </p>
               </article>
             );
@@ -219,9 +313,9 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
         <Panel
           className="lg:col-span-2"
           title="Shared spending and payments"
-          description={d.categoryFilter ? `${d.categoryFilter.name}, last ${d.trend.length} months` : `Last ${d.trend.length} months${d.unitFilter ? `, ${d.unitFilter.code} household` : ""}`}
+          description={`${d.selection.ids ? `${d.selection.label}, ` : ""}${d.trend.length === 1 ? (d.selection.ids ? "this month" : "This month") : `${d.selection.ids ? "last" : "Last"} ${d.trend.length} months`}${d.unitFilter ? `, ${d.unitFilter.code} household` : ""}`}
         >
-          <TrendChart data={d.trend} sharedLabel={d.unitFilter ? `${d.unitFilter.code} share` : d.categoryFilter ? d.categoryFilter.name : undefined} />
+          <TrendChart data={d.trend} sharedLabel={d.unitFilter ? `${d.unitFilter.code} share` : d.selection.ids ? d.selection.label : undefined} />
           <details className="mt-3 text-sm">
             <summary className="cursor-pointer text-muted-foreground hover:text-foreground">View as table</summary>
             <table className="num mt-2 w-full text-left">
@@ -341,6 +435,34 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
         </Panel>
       </div>
     </div>
+  );
+}
+
+function pctChange(now: bigint, before: bigint | null) {
+  if (before === null || before <= 0n) return null;
+  return Math.round(((paisaToNumber(now) - paisaToNumber(before)) / paisaToNumber(before)) * 100);
+}
+
+function Tile({ label, value, note, tone, icon: Icon }: { label: string; value: React.ReactNode; note?: React.ReactNode; tone?: "warning" | "success"; icon: typeof Receipt }) {
+  return (
+    <div className="rounded-2xl border bg-card p-4 sm:p-5">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground sm:text-sm">
+        <Icon className={cn("size-4", tone === "warning" && "text-warning", tone === "success" && "text-success")} /> {label}
+      </p>
+      <p className="num mt-1.5 font-heading text-xl font-bold sm:text-2xl">{value}</p>
+      {note ? <p className="mt-0.5 text-xs text-muted-foreground">{note}</p> : null}
+    </div>
+  );
+}
+
+function ChangeNote({ value, previous, upIsGood = false }: { value: number | null; previous: string | null; upIsGood?: boolean }) {
+  if (value === null || !previous) return null;
+  if (value === 0) return <>Same as {previous}</>;
+  const good = upIsGood ? value > 0 : value < 0;
+  return (
+    <span className={good ? "text-success" : "text-warning"}>
+      {value > 0 ? "▲" : "▼"} {Math.abs(value)}% <span className="text-muted-foreground">vs {previous}</span>
+    </span>
   );
 }
 

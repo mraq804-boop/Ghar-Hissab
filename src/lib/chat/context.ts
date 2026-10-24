@@ -5,6 +5,8 @@ export type ChatExpense = {
   title: string;
   section: string;
   category: string | null;
+  kind?: "essential" | "variable";
+  shared?: boolean;
   amountPaisa: Paisa | null;
   qty: string | null;
   ratePaisa: Paisa | null;
@@ -106,13 +108,18 @@ export function buildChatContext(input: {
     if (back.length) lines.push(`Gets money back: ${back.map((u) => `${u.code} ${rs(u.balancePaisa)}`).join(", ")}.`);
     if (scope.seeExpenses && m.expenses.length) {
       const byCategory = new Map<string, Paisa>();
+      const kindOf = new Map<string, string>();
+      const groups = { essential: 0n, variable: 0n };
       for (const e of m.expenses) {
         if (e.amountPaisa === null) continue;
         const k = e.category ?? e.section;
         byCategory.set(k, (byCategory.get(k) ?? 0n) + e.amountPaisa);
+        kindOf.set(k, e.kind === "variable" ? "daily food" : "must-pay");
+        if (e.shared !== false) groups[e.kind ?? "essential"] += e.amountPaisa;
       }
       const categories = [...byCategory].sort((a, b) => (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0));
-      lines.push(`Totals by category, largest first: ${categories.map(([k, v]) => `${k} ${rs(v)}`).join("; ")}.`);
+      lines.push(`Totals by category, largest first: ${categories.map(([k, v]) => `${k} (${kindOf.get(k)}) ${rs(v)}`).join("; ")}.`);
+      lines.push(`Shared spending by group: must-pay (bills, groceries, maid, household) ${rs(groups.essential)}; daily food (milk, sabzi, chicken & meat) ${rs(groups.variable)}.`);
       const ranked = m.expenses
         .filter((e) => e.amountPaisa !== null)
         .sort((a, b) => (b.amountPaisa! > a.amountPaisa! ? 1 : b.amountPaisa! < a.amountPaisa! ? -1 : 0))

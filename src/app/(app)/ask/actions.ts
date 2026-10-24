@@ -52,6 +52,8 @@ export async function askQuestion(input: { role: "user" | "assistant"; text: str
       title: e.title,
       section: ref.sections.find((s) => s.id === e.section_id)?.title ?? "-",
       category: ref.categories.find((c) => c.id === e.category_id)?.name ?? null,
+      kind: ref.categories.find((c) => c.id === e.category_id)?.kind ?? "essential",
+      shared: expenseSpec(e, ref.rules).type !== "none",
       amountPaisa: toPaisa(e.amount),
       qty: e.qty_num ? String(Number(e.qty_num)) : e.qty_text,
       ratePaisa: toPaisa(e.rate),

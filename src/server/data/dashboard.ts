@@ -5,9 +5,10 @@ import { canSeeAllBalances, getContext } from "@/server/auth";
 import { spendingAlerts, type AlertMonth } from "@/lib/smart/alerts";
 import { forecastMonth, type ForecastMonth } from "@/lib/smart/forecast";
 import { getMeterWatches } from "./meter-watch";
+import { inSelection, kindTotals, resolveSelection } from "@/lib/dashboard/filter";
 import { expenseSpec, getPeriodLedgers, getReference, toExpenseInput, toPaisa, unitRefs, type PaymentRow, type PeriodLedger } from "./ledger";
 
-export type DashboardFilters = { m?: string; unit?: string; cat?: string };
+export type DashboardFilters = { m?: string; unit?: string; cat?: string; cats?: string; group?: string };
 
 export async function getDashboard(filters: DashboardFilters) {
   const ctx = await getContext();
@@ -23,7 +24,13 @@ export async function getDashboard(filters: DashboardFilters) {
 
   const seeAll = canSeeAllBalances(ctx);
   const unitFilter = ref.units.find((u) => u.code === filters.unit) ?? null;
-  const categoryFilter = ref.categories.find((c) => c.id === filters.cat) ?? null;
+  const selection = resolveSelection(ref.categories, filters);
+  const filtering = selection.ids !== null;
+  const isShared = (e: PeriodLedger["expenses"][number]) => expenseSpec(e, ref.rules).type !== "none";
+  const sharedInSelection = (l: PeriodLedger) =>
+    l.expenses.filter((e) => e.amount !== null && isShared(e) && inSelection(selection, e.category_id)).reduce((a, e) => a + toPaisa(e.amount)!, 0n);
+  const kinds = (l: PeriodLedger | null) =>
+    l ? kindTotals(l.expenses.map((e) => ({ categoryId: e.category_id, amountPaisa: toPaisa(e.amount), shared: isShared(e) })), ref.categories) : null;
   const visibleUnits = current.settlement.units.filter((u) => seeAll || u.unitId === ctx.unitId);
   const units = unitRefs(ref.units);
 
@@ -37,7 +44,7 @@ export async function getDashboard(filters: DashboardFilters) {
   const byCategory = new Map<string, Paisa>();
   for (const e of current.expenses) {
     if (e.amount === null) continue;
-    if (categoryFilter && e.category_id !== categoryFilter.id) continue;
+    if (!inSelection(selection, e.category_id)) continue;
     let value: Paisa;
     if (unitFilter) {
       const input = toExpenseInput(e, ref.rules, ref.sections);
@@ -54,10 +61,8 @@ export async function getDashboard(filters: DashboardFilters) {
     .sort((a, b) => b.value - a.value);
 
   const trend = ledgers.map((l) => {
-    const shared = categoryFilter
-      ? l.expenses
-          .filter((e) => e.category_id === categoryFilter.id && e.amount !== null)
-          .reduce((a, e) => a + toPaisa(e.amount)!, 0n)
+    const shared = filtering
+      ? sharedInSelection(l)
       : unitFilter
         ? (l.settlement.units.find((u) => u.unitId === unitFilter.id)?.sharePaisa ?? 0n)
         : l.settlement.splitTotal;
@@ -68,6 +73,23 @@ export async function getDashboard(filters: DashboardFilters) {
   });
 
   const previous = ledgers.length > 1 ? ledgers[ledgers.length - 2] : null;
+
+  const variableKey = new Set(ref.categories.filter((c) => c.kind === "variable").map((c) => c.id));
+  const byCat = (l: PeriodLedger | null) => {
+    const m = new Map<string, Paisa>();
+    for (const e of l?.expenses ?? []) {
+      if (e.amount === null || !e.category_id || !variableKey.has(e.category_id)) continue;
+      m.set(e.category_id, (m.get(e.category_id) ?? 0n) + toPaisa(e.amount)!);
+    }
+    return m;
+  };
+  const nowVar = byCat(current);
+  const prevVar = byCat(previous);
+  const variableChanges = [...nowVar]
+    .map(([id, v]) => ({ name: ref.categories.find((c) => c.id === id)?.name ?? "Other", now: v, before: prevVar.get(id) ?? null }))
+    .filter((x) => x.before !== null && x.now > x.before!)
+    .sort((a, b) => Number(b.now - b.before! - (a.now - a.before!)))
+    .slice(0, 3);
 
   const overdue: { period: Period; unit: UnitSettlement }[] = [];
   for (const l of ledgers.slice(0, -1)) {
@@ -175,13 +197,20 @@ export async function getDashboard(filters: DashboardFilters) {
     units: ref.units,
     categoriesList: ref.categories,
     unitFilter,
-    categoryFilter,
+    selection: { label: selection.label, group: selection.group, ids: selection.ids ? [...selection.ids] : null, names: selection.names },
+    filteredTotal: filtering ? sharedInSelection(current) : null,
+    previousFilteredTotal: filtering && previous ? sharedInSelection(previous) : null,
+    kinds: kinds(current)!,
+    previousKinds: kinds(previous),
+    variableChanges,
+    collected: current.settlement.totals.paidPaisa,
+    previousCollected: previous?.settlement.totals.paidPaisa ?? null,
     settlement: current.settlement,
     visibleUnits,
     outstanding,
     pendingPayments: pendingPayments.length,
     pendingAmount,
-    expenseCount: current.expenses.length,
+    expenseCount: current.expenses.filter((e) => inSelection(selection, e.category_id)).length,
     previousSplitTotal: previous?.settlement.splitTotal ?? null,
     previousPeriod: previous?.period ?? null,
     categories,
