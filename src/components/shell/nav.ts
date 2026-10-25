@@ -39,4 +39,4 @@ export const NAV: NavItem[] = [
   { href: "/settings", label: "Settings", icon: Settings, adminOnly: true },
 ];
 
-export const MOBILE_TABS = ["/dashboard", "/expenses", "/payments", "/division"];
+export const MOBILE_TABS = ["/dashboard", "/expenses", "/payments", "/bills"];

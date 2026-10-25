@@ -57,7 +57,7 @@ async function Plan({ searchParams }: { searchParams: PageProps<"/me/plan">["sea
       <div className="space-y-6">
         <PageHeader title="My plan" />
         <EmptyState icon={Lock} title="One database update is needed">
-          Run supabase/migrations/20261024000014_personal_plans.sql in the Supabase SQL Editor, then reload this page.
+          Run <code className="break-all">supabase/migrations/20261024000014_personal_plans.sql</code> in the Supabase SQL Editor, then reload this page.
         </EmptyState>
       </div>
     );

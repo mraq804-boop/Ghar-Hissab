@@ -28,7 +28,7 @@ export function daysIn(month: string) {
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
-export const DEFAULT_PERSONAL_CATEGORIES = ["Fuel", "Mobile & internet", "Clothes", "Medicine", "Eating out", "Gifts", "Transport", "Other"];
+export const DEFAULT_PERSONAL_CATEGORIES = ["Fuel", "Mobile & internet", "Clothes", "Medicine", "Eating out", "Gifts", "Transport", "School", "Salaries", "Other"];
 
 const HINTS: [RegExp, string][] = [
   [/\b(petrol|fuel|diesel|cng)\b/i, "Fuel"],
@@ -38,6 +38,8 @@ const HINTS: [RegExp, string][] = [
   [/\b(restaurant|pizza|burger|lunch|dinner|chai|khana|biryani|eating)\b/i, "Eating out"],
   [/\b(gift|tohfa|eidi)\b/i, "Gifts"],
   [/\b(rickshaw|uber|careem|bykea|bus|fare|kiraya|taxi)\b/i, "Transport"],
+  [/\b(school|fee|fees|tuition|van|books|copies|uniform|stationery|exam|admission)\b/i, "School"],
+  [/\b(salary|tankhwah|tankhwa|driver|maid|maasi|chowkidar|guard|tutor)\b/i, "Salaries"],
 ];
 
 /** Picks a category for a quick entry: from the person's own history first, then from common words. */

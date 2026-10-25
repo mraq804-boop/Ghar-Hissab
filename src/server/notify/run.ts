@@ -5,6 +5,7 @@ import { MONTHS_LONG } from "@/lib/periods";
 import { advancePast, daysBetween, karachi, scheduleAt, weekKey } from "@/lib/notify/rules";
 import { PROVIDERS, isProvider } from "@/lib/utilities/providers";
 import { loadMeterWatches } from "@/server/data/meter-watch";
+import { dueStaff, type SalaryPayment, type Staff } from "@/lib/personal/salaries";
 import { admins, everyone, householdPeople, ofUnit } from "./audience";
 import { settlementFor } from "./ledger";
 import { deliverDue, notify } from "./push";
@@ -146,6 +147,28 @@ export async function runScheduled(db: SupabaseClient, now = new Date()) {
       const r = await notify(householdId, [p.user_id], { category: "personal", title: `${p.title} today`, body: `Planned ${rs(Number(p.estimate))}. Tap "Bought" when done.`, url: "/me/plan", dedupeKey: `plan-${p.id}` }, db);
       add("planDue", r.created);
       await db.from("personal_plan_items").update({ reminded_at: now.toISOString() }).eq("id", p.id);
+    }
+  }
+
+  if (local.hour >= 9) {
+    const monthStart = `${local.date.slice(0, 7)}-01`;
+    const [{ data: staffRows }, { data: paid }] = await Promise.all([
+      db.from("personal_staff").select("id, user_id, name, role, monthly_salary, pay_day, active").eq("active", true).not("pay_day", "is", null),
+      db.from("personal_salary_payments").select("id, staff_id, kind, amount, paid_on").eq("month", monthStart),
+    ]);
+    const staff: (Staff & { userId: string })[] = (staffRows ?? []).map((r) => ({ id: r.id, userId: r.user_id, name: r.name, role: r.role, monthlySalary: Number(r.monthly_salary), payDay: r.pay_day, active: r.active }));
+    const payments: SalaryPayment[] = (paid ?? []).map((p) => ({ id: p.id, staffId: p.staff_id, month: monthStart.slice(0, 7), kind: p.kind, amount: Number(p.amount), paidOn: p.paid_on, note: null }));
+    for (const st of dueStaff(staff, payments, local.date) as (Staff & { userId: string })[]) {
+      const householdId = await householdOf(db, st.userId);
+      if (!householdId) continue;
+      const covered = payments.filter((p) => p.staffId === st.id && p.kind !== "bonus").reduce((a, p) => a + p.amount, 0);
+      const r = await notify(
+        householdId,
+        [st.userId],
+        { category: "personal", title: `${st.name}'s salary is due: ${rs(st.monthlySalary - covered)}`, body: covered ? `${rs(covered)} already given this month.` : "Tap \"Pay salary\" when you've paid.", url: "/me/salaries", dedupeKey: `salary-${st.id}-${monthStart}` },
+        db,
+      );
+      add("salaryDue", r.created);
     }
   }
 

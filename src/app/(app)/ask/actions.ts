@@ -2,7 +2,8 @@
 
 import { z } from "zod";
 import { describeSpec, ruleToSpec } from "@/lib/finance";
-import { buildChatContext, CHAT_INSTRUCTIONS, type ChatBill, type ChatMonth, type ChatPersonal, type ChatPlanItem } from "@/lib/chat/context";
+import { buildChatContext, CHAT_INSTRUCTIONS, type ChatBill, type ChatMonth, type ChatPersonal, type ChatPlanItem, type ChatStaff } from "@/lib/chat/context";
+import { salaryMonth, staffLabels, type SalaryPayment, type Staff } from "@/lib/personal/salaries";
 import { PROVIDERS, isProvider } from "@/lib/utilities/providers";
 import { methodLabel } from "@/lib/labels";
 import { periodLabel } from "@/lib/periods";
@@ -117,6 +118,19 @@ export async function askQuestion(input: { role: "user" | "assistant"; text: str
     dueDate: r.due_date,
   }));
 
+  const [{ data: staffRows }, { data: salaryRows }] = await Promise.all([
+    ctx.supabase.from("personal_staff").select("id, role, monthly_salary, pay_day, active").eq("user_id", ctx.userId).eq("active", true),
+    ctx.supabase.from("personal_salary_payments").select("id, staff_id, month, kind, amount, paid_on").eq("user_id", ctx.userId).gte("month", `${nowMonth.slice(0, 4)}-01-01`),
+  ]);
+  const salaryPayments: SalaryPayment[] = (salaryRows ?? []).map((p) => ({ id: p.id, staffId: p.staff_id, month: p.month.slice(0, 7), kind: p.kind, amount: Number(p.amount), paidOn: p.paid_on, note: null }));
+  const labels = staffLabels(staffRows ?? []);
+  const staff: ChatStaff[] = (staffRows ?? []).map((r) => {
+    const st: Staff = { id: r.id, name: "", role: r.role, monthlySalary: Number(r.monthly_salary), payDay: r.pay_day, active: r.active };
+    const m = salaryMonth(st, salaryPayments.filter((p) => p.month === nowMonth));
+    const toP = (n: number) => toPaisa(n.toFixed(2))!;
+    return { label: labels.get(st.id) ?? "Staff", monthlyPaisa: toP(st.monthlySalary), payDay: st.payDay, paidPaisa: toP(m.paid), advancePaisa: toP(m.advances), leftPaisa: toP(m.left), yearPaisa: toP(salaryPayments.filter((p) => p.staffId === st.id).reduce((a, p) => a + p.amount, 0)) };
+  });
+
   const data = buildChatContext({
     today: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi" }).format(new Date()),
     households: ref.units.filter((u) => u.active).map((u) => ({ code: u.code, isPurseHolder: u.is_purse_holder })),
@@ -125,6 +139,7 @@ export async function askQuestion(input: { role: "user" | "assistant"; text: str
     bills,
     personal,
     plan,
+    staff: { month: nowMonth, list: staff },
     meters: (await getMeterWatches()).map((w) => ({ label: w.label, limit: w.limit, baseline: w.baseline, baselineDate: w.baselineDate, nextReadingDate: w.nextReadingDate, latest: w.latest, latestAt: w.latestAt, used: w.used, projected: w.projected, allowancePerDay: w.allowancePerDay, history: w.history })),
     scope: {
       seeExpenses: isAdmin(ctx) || ctx.settings.membersSeeAllExpenses,

@@ -56,6 +56,7 @@ export type ChatMeter = {
 export type ChatPlanItem = { month: string; title: string; category: string; estimatePaisa: Paisa; actualPaisa: Paisa | null; status: string; dueDate: string | null };
 
 export type ChatPersonal = { date: string; category: string; amountPaisa: Paisa }[];
+export type ChatStaff = { label: string; monthlyPaisa: Paisa; payDay: number | null; paidPaisa: Paisa; advancePaisa: Paisa; leftPaisa: Paisa; yearPaisa: Paisa };
 
 export type ChatScope = { seeExpenses: boolean; seeAllBalances: boolean; ownUnit: string | null };
 
@@ -81,6 +82,7 @@ export function buildChatContext(input: {
   personal?: ChatPersonal;
   meters?: ChatMeter[];
   plan?: ChatPlanItem[];
+  staff?: { month: string; list: ChatStaff[] };
   scope: ChatScope;
 }): string {
   const { scope } = input;
@@ -203,6 +205,16 @@ export function buildChatContext(input: {
     }
     lines.push("Entries (date | category | amount):");
     for (const p of input.personal) lines.push(`${p.date} | ${p.category} | ${rs(p.amountPaisa)}`);
+  }
+  if (input.staff?.list.length) {
+    const st = input.staff;
+    lines.push("", `## Staff the asker pays from their own pocket (private; salaries for ${st.month}; payments are already inside the personal spending above under "Salaries")`);
+    lines.push("Staff (described by their work) | monthly salary | pay day | paid this month (incl. advance and bonus) | advance this month | still to pay this month | paid this year");
+    for (const x of st.list) {
+      lines.push(`${x.label} | ${rs(x.monthlyPaisa)} | ${x.payDay ?? "-"} | ${rs(x.paidPaisa)} | ${rs(x.advancePaisa)} | ${rs(x.leftPaisa)} | ${rs(x.yearPaisa)}`);
+    }
+    const left = st.list.reduce((a, x) => a + x.leftPaisa, 0n);
+    lines.push(`Total paid to staff this month: ${rs(st.list.reduce((a, x) => a + x.paidPaisa, 0n))}. Still to pay: ${rs(left)}.`);
   }
   return lines.join("\n");
 }

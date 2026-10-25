@@ -27,16 +27,17 @@ type Category = { id: string; name: string; active: boolean };
 const rs = (n: number) => `Rs ${Math.round(n).toLocaleString("en-US")}`;
 const day = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 
-export function MeTabs({ active }: { active: "spent" | "plan" }) {
+export function MeTabs({ active }: { active: "spent" | "plan" | "salaries" }) {
   return (
     <div className="inline-flex rounded-full border bg-muted/40 p-1 text-sm" role="tablist" aria-label="My spending">
       {(
         [
           ["spent", "/me", "Spent"],
           ["plan", "/me/plan", "Plan"],
+          ["salaries", "/me/salaries", "Salaries"],
         ] as const
       ).map(([key, href, text]) => (
-        <Link key={key} href={href} role="tab" aria-selected={active === key} className={cn("rounded-full px-4 py-1.5", active === key ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+        <Link key={key} href={href} role="tab" aria-selected={active === key} className={cn("rounded-full px-3.5 py-1.5 sm:px-4", active === key ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")}>
           {text}
         </Link>
       ))}

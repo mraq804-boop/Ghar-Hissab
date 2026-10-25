@@ -556,3 +556,24 @@ describe("personal plans", () => {
     await expectDbError(rpc(AK_USER, `insert into public.personal_plan_items (month, title, estimate, expense_id) values ('2026-11-01', 'X', 5, $1)`, [abExpense]), /row-level security/);
   });
 });
+
+describe("personal salaries", () => {
+  it("the owner records staff and payments; nobody else can see or change them", async () => {
+    const [{ id: staff }] = await rpc<{ id: string }>(AK_USER, `insert into public.personal_staff (name, role, monthly_salary, pay_day) values ('Aslam', 'Driver', 25000, 1) returning id`);
+    const [{ id: expense }] = await rpc<{ id: string }>(AK_USER, `insert into public.personal_expenses (amount, spent_on) values (5000, '2026-10-05') returning id`);
+    await rpc(AK_USER, `insert into public.personal_salary_payments (staff_id, month, kind, amount, paid_on, expense_id) values ($1, '2026-10-01', 'advance', 5000, '2026-10-05', $2)`, [staff, expense]);
+    expect(await rpc(AK_USER, `select kind, amount from public.personal_salary_payments`)).toEqual([{ kind: "advance", amount: "5000.00" }]);
+    for (const other of [ADMIN, AB_USER, STRANGER]) {
+      expect(await rpc(other, `select id from public.personal_staff`)).toEqual([]);
+      expect(await rpc(other, `select id from public.personal_salary_payments`)).toEqual([]);
+      expect(await rpc(other, `update public.personal_staff set monthly_salary = 1 where id = $1 returning id`, [staff])).toEqual([]);
+    }
+  });
+
+  it("refuses payments for someone else's staff and bad values", async () => {
+    const [{ id: abStaff }] = await rpc<{ id: string }>(AB_USER, `insert into public.personal_staff (name, monthly_salary) values ('Maid', 8000) returning id`);
+    await expectDbError(rpc(AK_USER, `insert into public.personal_salary_payments (staff_id, month, amount, paid_on) values ($1, '2026-10-01', 8000, '2026-10-01')`, [abStaff]), /row-level security/);
+    await expectDbError(rpc(AB_USER, `insert into public.personal_salary_payments (staff_id, month, kind, amount, paid_on) values ($1, '2026-10-01', 'loan', 8000, '2026-10-01')`, [abStaff]), /check/);
+    await expectDbError(rpc(AB_USER, `insert into public.personal_staff (name, monthly_salary, pay_day) values ('X', 100, 32)`), /check/);
+  });
+});
