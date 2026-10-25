@@ -577,3 +577,31 @@ describe("personal salaries", () => {
     await expectDbError(rpc(AB_USER, `insert into public.personal_staff (name, monthly_salary, pay_day) values ('X', 100, 32)`), /check/);
   });
 });
+
+describe("copying last month's items", () => {
+  it("a copied item is paid from the purse and creates no payment", async () => {
+    const [{ id: next }] = await rpc<{ id: string }>(ADMIN, `select public.ensure_period($1, 2027, 1) as id`, [ids.householdId]);
+    const [row] = await rpc<{ id: string }>(ADMIN, `select * from public.upsert_expense($1)`, [
+      JSON.stringify({
+        household_id: ids.householdId,
+        period_id: next,
+        section_id: ids.sections.MILK_MEAT,
+        category_id: ids.categories.meat,
+        title: "Chicken",
+        description: "",
+        qty_text: "",
+        qty_num: "21",
+        rate: "500",
+        amount: "10500.00",
+        split_rule_id: ids.rules.POOL3,
+        split_override: null,
+        expense_date: "",
+        paid_by_unit_id: null,
+        notes: "",
+      }),
+    ]);
+    const [e] = (await db.query<{ paid_by_unit_id: string; expense_date: string | null; amount: string }>(`select paid_by_unit_id, expense_date, amount::text from public.expenses where id = $1`, [row.id])).rows;
+    expect(e).toEqual({ paid_by_unit_id: ids.units.AQ, expense_date: null, amount: "10500.00" });
+    expect((await db.query(`select id from public.payments where related_expense_id = $1`, [row.id])).rows).toEqual([]);
+  });
+});

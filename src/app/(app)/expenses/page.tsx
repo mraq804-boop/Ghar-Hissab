@@ -34,6 +34,13 @@ async function Expenses({ searchParams }: { searchParams: PageProps<"/expenses">
   const period = resolvePeriod(ref.periods, typeof sp.m === "string" ? sp.m : null);
   const now = new Date();
   const hasCurrent = ref.periods.some((p) => p.year === now.getFullYear() && p.month === now.getMonth() + 1);
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const hasNext = ref.periods.some((p) => p.year === next.getFullYear() && p.month === next.getMonth() + 1);
+  const startNext = !hasCurrent
+    ? { year: now.getFullYear(), month: now.getMonth() + 1 }
+    : !hasNext && now.getDate() >= 20
+      ? { year: next.getFullYear(), month: next.getMonth() + 1 }
+      : null;
 
   if (!period) {
     return (
@@ -89,7 +96,7 @@ async function Expenses({ searchParams }: { searchParams: PageProps<"/expenses">
     <ExpenseBoard
       admin={admin}
       period={{ id: period.id, label: periodLabel(period, true), status: period.status, slug: `${period.year}-${String(period.month).padStart(2, "0")}` }}
-      startNext={admin && !hasCurrent ? { year: now.getFullYear(), month: now.getMonth() + 1 } : null}
+      startNext={admin ? startNext : null}
       expenses={expenses}
       sectionTotals={Object.fromEntries(Object.entries(ledger.settlement.sectionTotals))}
       grandTotal={ledger.settlement.grandTotal}
@@ -102,6 +109,7 @@ async function Expenses({ searchParams }: { searchParams: PageProps<"/expenses">
         history,
       }}
       openNew={sp.new === "1"}
+      copyMonths={admin ? ref.periods.filter((p) => p.year * 12 + p.month < period.year * 12 + period.month).sort((a, b) => b.year * 12 + b.month - (a.year * 12 + a.month)).slice(0, 12).map((p) => ({ id: p.id, label: periodLabel(p, true) })) : []}
     />
   );
 }

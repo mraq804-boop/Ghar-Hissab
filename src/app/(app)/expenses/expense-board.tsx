@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, Download, Lock, LockOpen, MoreHorizontal, Pencil, Plus, Receipt, Search, Trash2 } from "lucide-react";
+import { ChevronDown, ClipboardCopy, Download, Lock, LockOpen, MoreHorizontal, Pencil, Plus, Receipt, Search, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { deleteExpense, setPeriodStatus } from "./actions";
 import { ExpenseForm, type FormRef } from "./expense-form";
 import { StartMonth } from "./start-month";
+import { CopyDialog } from "./copy-dialog";
 
 export type ExpenseView = {
   id: string;
@@ -62,6 +63,7 @@ export function ExpenseBoard(props: {
   splitTotal: bigint;
   refData: FormRef;
   openNew: boolean;
+  copyMonths: { id: string; label: string }[];
 }) {
   const { admin, period, expenses, refData } = props;
   const router = useRouter();
@@ -73,6 +75,7 @@ export function ExpenseBoard(props: {
   const [seenOpenNew, setSeenOpenNew] = useState(props.openNew);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [pending, start] = useTransition();
+  const [copying, setCopying] = useState(false);
 
   if (props.openNew !== seenOpenNew) {
     setSeenOpenNew(props.openNew);
@@ -140,6 +143,11 @@ export function ExpenseBoard(props: {
                 {closed ? <LockOpen /> : <Lock />}
                 {closed ? "Reopen" : "Close month"}
               </ConfirmButton>
+            ) : null}
+            {admin && !closed && props.copyMonths.length ? (
+              <Button variant="outline" onClick={() => setCopying(true)}>
+                <ClipboardCopy /> Copy from last month
+              </Button>
             ) : null}
             {admin && !closed ? (
               <Button onClick={() => setEditing("new")} className="hidden sm:inline-flex">
@@ -265,6 +273,9 @@ export function ExpenseBoard(props: {
         </Button>
       ) : null}
 
+      {admin && !closed && props.copyMonths.length ? (
+        <CopyDialog key={period.id} open={copying} onOpenChange={setCopying} toPeriod={{ id: period.id, label: period.label }} months={props.copyMonths} />
+      ) : null}
       <ResponsiveDialog
         open={editing !== null}
         onOpenChange={(o) => !o && !pending && close()}
