@@ -83,7 +83,7 @@ async function Bills() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Bills" description="Electricity, water and gas bills with a saved copy of each one. LESCO and WASA bills are fetched every day; SNGPL bills are uploaded." />
+      <PageHeader title="Bills" description="Electricity, water and gas bills with a saved copy of each one. LESCO and WASA bills are fetched every day; SNGPL gas bills are fetched when you tap Fetch bill, or attached as a picture." />
       <BillsBoard
         admin={admin}
         householdId={ctx.householdId}

@@ -49,3 +49,18 @@ export function readBillText(text: string): BillTextRead {
   const billMonth = afterLabel(lines, /bill(?:ing)?\s+month|month\s+of\s+bill|bill\s+for/i, monthIn) ?? (dueDate ? dueDate.slice(0, 7) : null);
   return { billMonth, dueDate, payable, afterDue };
 }
+
+/** Turns a bill web page into plain lines of text for readBillText. */
+export function htmlToLines(html: string) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<\/(td|th|div|p|li|tr|h\d)>|<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/g, " ")
+    .replace(/&amp;/g, "&")
+    .split("\n")
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+}

@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseLescoBill, type LescoBill } from "@/lib/lesco/parse";
 import { billAssets, buildBillSnapshot } from "@/lib/lesco/snapshot";
 import { PROVIDERS, type Provider } from "@/lib/utilities/providers";
-import { readBillText } from "@/lib/utilities/read-bill-text";
+import { htmlToLines, readBillText } from "@/lib/utilities/read-bill-text";
 
 const UA = "Mozilla/5.0 (compatible; GharHisaab bill check; one request per meter per day)";
 const LESCO = "https://bill.pitc.com.pk";
@@ -132,20 +132,6 @@ async function fetchLesco(referenceNo: string): Promise<Fetched> {
   return { ok: true, html, bill, site: LESCO };
 }
 
-function htmlToLines(html: string) {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<\/(td|th|div|p|li|tr|h\d)>|<br\s*\/?>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;|&#160;/g, " ")
-    .replace(/&amp;/g, "&")
-    .split("\n")
-    .map((l) => l.replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .join("\n");
-}
-
 /** WASA Lahore: the duplicate bill page takes the account number in the address. */
 async function fetchWasa(account: string): Promise<Fetched> {
   const res = await get(`${WASA}/DuplicateBill/showBill?acctnum=${encodeURIComponent(account)}`);
@@ -179,16 +165,23 @@ async function fetchWasa(account: string): Promise<Fetched> {
 /** Downloads the current bill for one meter, saves a copy and records it. Uses the service-role client. */
 export type CheckOptions = { onNewBill?: (householdId: string, meterId: string, billMonth: string) => void };
 
+async function finishCheck(db: SupabaseClient, meterId: string, outcome: CheckOutcome) {
+  await db.from("utility_meters").update({ last_checked_at: new Date().toISOString(), last_error: outcome.status === "error" ? outcome.message : null }).eq("id", meterId);
+  return outcome;
+}
+
 export async function checkMeter(db: SupabaseClient, meter: Meter, opts: CheckOptions = {}): Promise<CheckOutcome> {
   lastFailure = "";
-  const finish = async (outcome: CheckOutcome) => {
-    await db.from("utility_meters").update({ last_checked_at: new Date().toISOString(), last_error: outcome.status === "error" ? outcome.message : null }).eq("id", meter.id);
-    return outcome;
-  };
   if (!PROVIDERS[meter.provider].fetches) return { status: "error", message: `${PROVIDERS[meter.provider].name} bills are uploaded, not fetched.` };
 
   const fetched = meter.provider === "lesco" ? await fetchLesco(meter.reference_no) : await fetchWasa(meter.reference_no);
-  if (!fetched.ok) return finish({ status: "error", message: fetched.message });
+  if (!fetched.ok) return finishCheck(db, meter.id, { status: "error", message: fetched.message });
+  return saveFetchedBill(db, meter, fetched, opts);
+}
+
+/** Saves a self-contained copy of a bill page that was read, and records the bill. */
+export async function saveFetchedBill(db: SupabaseClient, meter: Meter, fetched: { html: string; bill: FetchedBill; site: string }, opts: CheckOptions = {}): Promise<CheckOutcome> {
+  const finish = (outcome: CheckOutcome) => finishCheck(db, meter.id, outcome);
   const { bill, html, site } = fetched;
 
   const billMonth = `${bill.billMonth}-01`;

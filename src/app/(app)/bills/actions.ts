@@ -9,7 +9,8 @@ import { sniffMime } from "@/lib/validation/payment";
 import { getReference, type ExpenseRow } from "@/server/data/ledger";
 import { kickSync } from "@/server/excel/kick";
 import { PROVIDERS, isProvider, type Provider } from "@/lib/utilities/providers";
-import { checkMeter, type CheckOutcome } from "@/server/lesco/check";
+import { checkMeter, saveFetchedBill, type CheckOutcome } from "@/server/lesco/check";
+import { finishSngpl, startSngpl } from "@/server/lesco/sngpl";
 import { onBillArrived, onMeterReading } from "@/server/notify/events";
 import { createSupabaseAdmin } from "@/server/supabase/admin";
 
@@ -324,4 +325,54 @@ export async function setUnitLimit(input: { meterId: string; limit: number }): P
   revalidatePath("/bills");
   revalidatePath("/dashboard");
   return { ok: true, data: undefined, message: `Limit set to ${parsed.data.limit} units` };
+}
+
+type GasCode = { token: string; image: string };
+
+async function gasMeter(meterId: string) {
+  const ctx = await getContext();
+  if (!isAdmin(ctx)) return { ctx, meter: null };
+  if (!z.uuid().safeParse(meterId).success) return { ctx, meter: null };
+  const { data } = await ctx.supabase.from("utility_meters").select(METER_COLUMNS).eq("id", meterId).maybeSingle();
+  return { ctx, meter: data && data.provider === "sngpl" && data.household_id === ctx.householdId ? { ...data, provider: "sngpl" as const } : null };
+}
+
+/** Opens SNGPL's bill form and returns its picture code for the admin to type. */
+export async function startGasFetch(meterId: string): Promise<ActionResult<GasCode>> {
+  const { ctx, meter } = await gasMeter(meterId);
+  if (!isAdmin(ctx)) return forbidden;
+  if (!meter) return { ok: false, error: "That gas connection couldn't be found." };
+  const r = await startSngpl();
+  return r.ok ? { ok: true, data: { token: r.token, image: r.image } } : { ok: false, error: r.message };
+}
+
+const gasSchema = z.object({ meterId: z.uuid(), token: z.string().min(10).max(8000), code: z.string().trim().min(3, "Type the characters in the picture.").max(8) });
+
+/** Sends the consumer number with the code the admin typed, then saves the bill SNGPL returns. */
+export async function finishGasFetch(input: z.input<typeof gasSchema>): Promise<ActionResult<{ retry?: GasCode }>> {
+  const parsed = gasSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const { ctx, meter } = await gasMeter(parsed.data.meterId);
+  if (!isAdmin(ctx)) return forbidden;
+  if (!meter) return { ok: false, error: "That gas connection couldn't be found." };
+
+  const result = await finishSngpl(meter.reference_no, parsed.data.code, parsed.data.token);
+  const admin = createSupabaseAdmin();
+  if (!result.ok) {
+    if (result.raw) {
+      const ext = result.raw.type.includes("pdf") ? "pdf" : result.raw.type.includes("html") ? "html" : "bin";
+      await admin.storage.from("utility-bills").upload(`${meter.household_id}/${meter.id}/sngpl-unread-${Date.now()}.${ext}`, result.raw.body, { contentType: "text/plain", upsert: true });
+    }
+    if (result.reason === "wrong_code" || result.reason === "expired") {
+      const fresh = await startSngpl();
+      if (fresh.ok) return { ok: true, data: { retry: { token: fresh.token, image: fresh.image } }, message: result.message };
+    }
+    return { ok: false, error: result.message };
+  }
+
+  const outcome = await saveFetchedBill(admin, meter, result, { onNewBill: onBillArrived });
+  revalidatePath("/bills");
+  revalidatePath("/dashboard");
+  const r = outcomeMessage(outcome, meter.label);
+  return r.ok ? { ok: true, data: {}, message: r.message } : r;
 }

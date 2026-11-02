@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { CalendarClock, CheckCircle2, Droplets, ExternalLink, FileText, Flame, Loader2, Plus, RefreshCw, Trash2, TriangleAlert, Upload, Zap } from "lucide-react";
@@ -19,7 +19,7 @@ import { readBillText } from "@/lib/utilities/read-bill-text";
 import { cn } from "@/lib/utils";
 import type { MeterWatchView } from "@/server/data/meter-watch";
 import { MeterWatchPanel } from "./meter-watch";
-import { addBillToExpenses, addMeter, checkNow, deleteMeter, updateMeter, uploadBill } from "./actions";
+import { addBillToExpenses, addMeter, checkNow, deleteMeter, finishGasFetch, startGasFetch, updateMeter, uploadBill } from "./actions";
 
 export type MeterView = {
   id: string;
@@ -77,6 +77,7 @@ export function BillsBoard({
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
   const [uploading, setUploading] = useState<MeterView | null>(null);
+  const [fetchingGas, setFetchingGas] = useState<MeterView | null>(null);
 
   const run: Run = (key, fn) => {
     setBusy(key);
@@ -116,17 +117,26 @@ export function BillsBoard({
                   </Button>
                 ) : (
                   <div className="flex flex-wrap justify-end gap-2">
-                    <Button asChild size="sm" variant="outline">
-                      <a href={p.siteUrl} target="_blank" rel="noopener noreferrer"><ExternalLink /> Get bill</a>
-                    </Button>
-                    <Button size="sm" onClick={() => setUploading(m)}><Upload /> Upload bill</Button>
+                    {m.provider === "sngpl" ? (
+                      <Button size="sm" disabled={pending} onClick={() => setFetchingGas(m)}><RefreshCw /> Fetch bill</Button>
+                    ) : (
+                      <Button asChild size="sm" variant="outline">
+                        <a href={p.siteUrl} target="_blank" rel="noopener noreferrer"><ExternalLink /> Get bill</a>
+                      </Button>
+                    )}
+                    <Button size="sm" variant={m.provider === "sngpl" ? "outline" : "default"} onClick={() => setUploading(m)}><Upload /> Upload bill</Button>
                   </div>
                 )
               ) : null
             }
           >
             <div className="space-y-4">
-              {!p.fetches && admin && !latest ? (
+              {!p.fetches && admin && !latest && m.provider === "sngpl" ? (
+                <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                  Tap <strong>Fetch bill</strong> and type the characters SNGPL shows in its picture. The app gets the bill and saves it here. If that doesn&apos;t work,
+                  use <strong>Upload bill</strong> with a photo or screenshot.
+                </p>
+              ) : !p.fetches && admin && !latest ? (
                 <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
                   {p.name} asks for a CAPTCHA, so this bill isn&apos;t fetched automatically. Tap <strong>Get bill</strong>, enter consumer number{" "}
                   {m.referenceNo ? <span className="num font-medium text-foreground">{m.referenceNo}</span> : null} and the CAPTCHA, then take a screenshot and use{" "}
@@ -209,8 +219,23 @@ export function BillsBoard({
 
       <p className="text-xs text-muted-foreground">
         LESCO and WASA bills are read from their public bill pages once a day per connection. If a site asks for a CAPTCHA or changes, the app stops and
-        links to the site instead. SNGPL bills are uploaded by you.
+        links to the site instead. SNGPL gas bills are fetched when you tap Fetch bill and type SNGPL&apos;s picture code, or uploaded by you.
       </p>
+
+      {fetchingGas ? (
+        <FetchGasBill
+          meter={fetchingGas}
+          onClose={() => setFetchingGas(null)}
+          onUpload={() => {
+            setUploading(fetchingGas);
+            setFetchingGas(null);
+          }}
+          onSaved={() => {
+            setFetchingGas(null);
+            start(() => router.refresh());
+          }}
+        />
+      ) : null}
 
       {uploading ? (
         <UploadBill
@@ -415,6 +440,98 @@ function UploadBill({ meter, today, onClose, onSaved }: { meter: MeterView; toda
           </Button>
         </div>
       </div>
+    </ResponsiveDialog>
+  );
+}
+
+function FetchGasBill({ meter, onClose, onSaved, onUpload }: { meter: MeterView; onClose: () => void; onSaved: () => void; onUpload: () => void }) {
+  const [code, setCode] = useState("");
+  const [picture, setPicture] = useState<{ token: string; image: string } | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [working, start] = useTransition();
+
+  const loadPicture = () =>
+    start(async () => {
+      setProblem(null);
+      setCode("");
+      const r = await startGasFetch(meter.id);
+      if (r.ok) setPicture(r.data);
+      else setProblem(r.error);
+    });
+
+  const asked = useRef(false);
+  useEffect(() => {
+    if (asked.current) return;
+    asked.current = true;
+    loadPicture();
+  });
+
+  const send = () => {
+    if (!picture) return;
+    start(async () => {
+      const r = await finishGasFetch({ meterId: meter.id, token: picture.token, code });
+      if (!r.ok) {
+        setProblem(r.error);
+        return;
+      }
+      if (r.data.retry) {
+        setPicture(r.data.retry);
+        setCode("");
+        setProblem(r.message ?? "Try the new picture.");
+        return;
+      }
+      toast.success(r.message ?? "Bill saved");
+      onSaved();
+    });
+  };
+
+  return (
+    <ResponsiveDialog open onOpenChange={(o) => !o && !working && onClose()} title="Fetch gas bill" description={`${meter.label} · SNGPL asks you to type the characters in the picture`}>
+      <form
+        className="space-y-4 pb-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          send();
+        }}
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-16 min-w-40 items-center justify-center rounded-lg border bg-white px-2">
+            {picture ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={picture.image} alt="SNGPL picture code" className="h-12 w-auto" />
+            ) : (
+              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            )}
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={loadPicture} disabled={working}>
+            <RefreshCw /> New picture
+          </Button>
+        </div>
+        <Field label="Characters in the picture" htmlFor="gas-code">
+          <Input
+            id="gas-code"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\s/g, ""))}
+            maxLength={8}
+            autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            className="num h-11 text-lg tracking-widest"
+          />
+        </Field>
+        <button type="button" onClick={onUpload} disabled={working} className="flex w-full items-center gap-2 rounded-lg border border-dashed px-3 py-2.5 text-left text-sm hover:bg-muted/50">
+          <Upload className="size-4 shrink-0 text-muted-foreground" />
+          <span>Have the paper bill? <strong>Attach a bill picture</strong> instead.</span>
+        </button>
+        {problem ? <p role="alert" className="rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning">{problem}</p> : null}
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" className="h-11 flex-1" onClick={onClose} disabled={working}>Cancel</Button>
+          <Button type="submit" className="h-11 flex-[2]" disabled={working || !picture || code.length < 3}>
+            {working ? <Loader2 className="animate-spin" /> : <RefreshCw />} Fetch bill
+          </Button>
+        </div>
+      </form>
     </ResponsiveDialog>
   );
 }
