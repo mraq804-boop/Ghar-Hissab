@@ -10,9 +10,13 @@ export type MeterWatch = {
   latestAt: string | null;
   used: number | null;
   perDay: number | null;
+  perWeek: number | null;
+  /** Use between the latest reading and the one nearest a week before it (at least 3 days apart). */
+  recent: { units: number; days: number; perDay: number; perWeek: number } | null;
   projected: number | null;
   daysLeft: number;
   allowancePerDay: number | null;
+  allowancePerWeek: number | null;
   stale: boolean;
   problem: "below_baseline" | null;
 };
@@ -20,6 +24,7 @@ export type MeterWatch = {
 const DAY = 86_400_000;
 const toDay = (iso: string) => Date.parse(`${iso.slice(0, 10)}T00:00:00Z`);
 const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+const round1 = (n: number) => Math.round(n * 10) / 10;
 
 /** The reading date one month after `date`, kept on the same day of the month where possible. */
 export function nextReadingDate(date: string) {
@@ -58,9 +63,12 @@ export function meterWatch(input: {
     latestAt: latest?.readAt ?? null,
     used: null,
     perDay: null,
+    perWeek: null,
+    recent: null,
     projected: null,
     daysLeft,
     allowancePerDay: null,
+    allowancePerWeek: null,
     stale: !latest || nowMs - Date.parse(latest.readAt) > 7 * DAY,
     problem: null,
   };
@@ -74,6 +82,21 @@ export function meterWatch(input: {
   const projected = perDay !== null ? Math.round(used + perDay * remainingAfterReading) : null;
   const allowancePerDay = remainingAfterReading >= 1 ? Math.max(0, (input.limit - 1 - used) / remainingAfterReading) : null;
 
+  const points = [{ reading: input.baseline, at: start }, ...inCycle.map((r) => ({ reading: r.reading, at: Date.parse(r.readAt) }))];
+  const latestAt = Date.parse(latest.readAt);
+  const earlier = points
+    .filter((p) => latestAt - p.at >= 3 * DAY && p.reading <= latest.reading)
+    .sort((a, b) => Math.abs(latestAt - a.at - 7 * DAY) - Math.abs(latestAt - b.at - 7 * DAY))[0];
+  const recentDays = earlier ? (latestAt - earlier.at) / DAY : 0;
+  const recent = earlier
+    ? {
+        units: latest.reading - earlier.reading,
+        days: Math.round(recentDays * 10) / 10,
+        perDay: round1((latest.reading - earlier.reading) / recentDays),
+        perWeek: Math.round(((latest.reading - earlier.reading) / recentDays) * 7),
+      }
+    : null;
+
   let level: MeterLevel = "ok";
   if (used >= input.limit || (projected !== null && projected >= input.limit)) level = "over";
   else if (used >= input.limit * 0.8 || (projected !== null && projected >= input.limit * 0.85)) level = "watch";
@@ -81,9 +104,12 @@ export function meterWatch(input: {
   return {
     ...base,
     used,
-    perDay: perDay === null ? null : Math.round(perDay * 10) / 10,
+    perDay: perDay === null ? null : round1(perDay),
+    perWeek: perDay === null ? null : Math.round(perDay * 7),
+    recent,
     projected,
     allowancePerDay: allowancePerDay === null ? null : Math.floor(allowancePerDay * 10) / 10,
+    allowancePerWeek: allowancePerDay === null ? null : Math.floor(allowancePerDay * 7),
     level,
   };
 }

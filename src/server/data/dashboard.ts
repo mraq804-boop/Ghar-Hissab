@@ -91,12 +91,12 @@ export async function getDashboard(filters: DashboardFilters) {
     .sort((a, b) => Number(b.now - b.before! - (a.now - a.before!)))
     .slice(0, 3);
 
-  const overdue: { period: Period; unit: UnitSettlement }[] = [];
-  for (const l of ledgers.slice(0, -1)) {
-    for (const u of l.settlement.units) {
-      if (u.balancePaisa <= -100n && (seeAll || u.unitId === ctx.unitId)) overdue.push({ period: l.period, unit: u });
-    }
-  }
+  const overdue: { period: Period; unit: UnitSettlement; amountPaisa: Paisa }[] = previous
+    ? current.settlement.units
+        .filter((u) => seeAll || u.unitId === ctx.unitId)
+        .map((u) => ({ period: previous.period, unit: u, amountPaisa: -u.broughtForwardPaisa - u.clearedPreviousPaisa }))
+        .filter((o) => o.amountPaisa >= 100n)
+    : [];
 
   const toAlertMonth = (l: PeriodLedger): AlertMonth => ({
     label: periodLabel(l.period),
@@ -132,6 +132,7 @@ export async function getDashboard(filters: DashboardFilters) {
         current: toForecastMonth(current),
         previous: ledgers.slice(0, -1).reverse().map(toForecastMonth),
         payments: current.payments.filter((p) => p.status === "approved").map((p) => ({ unitId: p.payer_unit_id, amountPaisa: toPaisa(p.amount)! })),
+        broughtForward: new Map(current.settlement.units.map((u) => [u.unitId, u.broughtForwardPaisa])),
       })
     : null;
 
@@ -213,6 +214,8 @@ export async function getDashboard(filters: DashboardFilters) {
     expenseCount: current.expenses.filter((e) => inSelection(selection, e.category_id)).length,
     previousSplitTotal: previous?.settlement.splitTotal ?? null,
     previousPeriod: previous?.period ?? null,
+    nextPeriod: ref.periods.filter((p) => p.year * 12 + p.month > period.year * 12 + period.month).sort((a, b) => a.year * 12 + a.month - (b.year * 12 + b.month))[0] ?? null,
+    carryFrom: ref.periods.filter((p) => p.year * 12 + p.month < period.year * 12 + period.month).sort((a, b) => b.year * 12 + b.month - (a.year * 12 + a.month))[0] ?? null,
     categories,
     trend,
     overdue,

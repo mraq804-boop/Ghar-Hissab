@@ -78,6 +78,18 @@ export function MeterWatchPanel({ watch, householdId, admin }: { watch: MeterWat
         {watch.level === "over" || watch.level === "watch" || watch.problem ? <TriangleAlert className="mt-0.5 size-4 shrink-0" /> : null}
         <span>{summary(watch)}</span>
       </p>
+      {watch.perDay !== null || watch.recent ? (
+        <dl className="grid grid-cols-3 gap-2 text-center">
+          <Stat label="Average a day" value={watch.perDay !== null ? `${watch.perDay}` : "–"} hint="this cycle" />
+          <Stat label="Average a week" value={watch.perWeek !== null ? `${watch.perWeek}` : "–"} hint={watch.recent ? `last ${Math.round(watch.recent.days)} days: ${watch.recent.units}` : "this cycle"} />
+          <Stat
+            label="Allowed a week"
+            value={watch.allowancePerWeek !== null && watch.used !== null && watch.used < watch.limit ? `${watch.allowancePerWeek}` : "–"}
+            hint={`to stay under ${watch.limit}`}
+            tone={watch.perWeek !== null && watch.allowancePerWeek !== null && watch.perWeek > watch.allowancePerWeek ? "warning" : undefined}
+          />
+        </dl>
+      ) : null}
       <p className="text-xs text-muted-foreground">
         LESCO read {watch.baseline} on {day(watch.baselineDate)}; next reading about {day(watch.nextReadingDate)} ({watch.daysLeft} days).
         {watch.latestAt ? ` Last family reading ${watch.latest} on ${when(watch.latestAt)}.` : ""}
@@ -181,5 +193,18 @@ function AddReading({ watch, householdId, onClose, onSaved }: { watch: MeterWatc
         </div>
       </div>
     </ResponsiveDialog>
+  );
+}
+
+function Stat({ label, value, hint, tone }: { label: string; value: string; hint: string; tone?: "warning" }) {
+  return (
+    <div className="rounded-lg bg-muted/50 px-2 py-2">
+      <dt className="text-[11px] text-muted-foreground">{label}</dt>
+      <dd className={cn("num font-heading text-lg font-bold", tone === "warning" && "text-warning")}>
+        {value}
+        {value !== "–" ? <span className="ml-0.5 text-xs font-normal text-muted-foreground">units</span> : null}
+      </dd>
+      <dd className="text-[11px] text-muted-foreground">{hint}</dd>
+    </div>
   );
 }

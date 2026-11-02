@@ -58,7 +58,7 @@ describe("October 2026 workbook reproduction", () => {
     expect(byCode(s.units, "aq")).toMatchObject({ paidPaisa: 2_790_000n, balancePaisa: 14_400n, status: "gets_back" });
     expect(byCode(s.units, "ak")).toMatchObject({ paidPaisa: 1_900_000n, balancePaisa: -875_500n, status: "to_pay" });
     expect(byCode(s.units, "ab")).toMatchObject({ paidPaisa: 0n, balancePaisa: -2_688_900n, status: "not_paid" });
-    expect(s.totals).toEqual({ sharePaisa: 8_240_000n, paidPaisa: 4_690_000n, balancePaisa: -3_550_000n });
+    expect(s.totals).toEqual({ sharePaisa: 8_240_000n, paidPaisa: 4_690_000n, broughtForwardPaisa: 0n, balancePaisa: -3_550_000n });
   });
 
   it("ignores pending bills (null amounts)", () => {

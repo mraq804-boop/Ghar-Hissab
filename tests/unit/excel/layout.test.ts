@@ -162,3 +162,17 @@ describe("kitchen sheets", () => {
     for (const c of l.checks) expect(s.get(c.cell)).toBe(c.expected);
   });
 });
+
+describe("balances brought forward", () => {
+  it("adds the carried amount to each household's balance and explains it", () => {
+    const broughtForward = new Map([["aq", 939_800n], ["ak", -54_600n]]);
+    const settlement = computeSettlement({ units: UNITS, expenses: [], payments: [{ unitId: "ak", amountPaisa: 100_000n }], broughtForward });
+    const sheet = renderPeriodSheet({ sheetName: "x", month: 11, units: UNITS, expenses: [], paidByUnit: new Map([["ak", 100_000n]]), settlement });
+    const s = load(sheet);
+    const row = (code: string) => sheet.rows.find((r) => r.cells.includes(`settle:${code}`))!;
+    const balance = (code: string) => s.get(`G${row(code).r}`);
+    expect([balance("AQ"), balance("AK"), balance("AB")]).toEqual([9398, 454, 0]);
+    expect(s.get(`D${row("AQ").r}`)).toBe("Gets back");
+    expect(sheet.rows.some((r) => r.cells.some((c) => typeof c === "string" && c.startsWith("Brought forward from the month before") && c.includes("AQ +9,398, AK -546")))).toBe(true);
+  });
+});

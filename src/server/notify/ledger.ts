@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeSettlement, type Settlement } from "@/lib/finance";
 import { toExpenseInput, toPaisa, unitRefs, type ExpenseRow, type Rule, type Section, type Unit } from "@/server/data/ledger";
+import { broughtForwardFor } from "@/server/data/carry";
 
 /** The settlement for one household month, computed with the given (service) client. */
 export async function settlementFor(db: SupabaseClient, householdId: string, year: number, month: number): Promise<{ periodId: string; units: Unit[]; settlement: Settlement } | null> {
@@ -19,6 +20,7 @@ export async function settlementFor(db: SupabaseClient, householdId: string, yea
     units: unitRefs(units.data as Unit[]),
     expenses: (expenses.data as unknown as ExpenseRow[]).map((e) => toExpenseInput(e, rules.data as Rule[], sections.data as Section[])),
     payments: (payments.data ?? []).map((p) => ({ unitId: p.payer_unit_id, amountPaisa: toPaisa(p.amount)! })),
+    broughtForward: await broughtForwardFor(db, householdId, year, month),
   });
   return { periodId: period.id, units: units.data as Unit[], settlement };
 }

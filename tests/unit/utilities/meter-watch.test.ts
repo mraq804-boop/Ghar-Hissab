@@ -59,3 +59,28 @@ describe("readMeterDigits", () => {
     expect(readMeterDigits("no digits")).toBeNull();
   });
 });
+
+describe("weekly averages", () => {
+  it("gives the cycle's average per day and week, and the week to stay under the limit", () => {
+    const w = meterWatch({ ...base, readings: [{ reading: 901, readAt: "2026-10-21T00:00:00Z" }], now: "2026-10-21T08:00:00Z" });
+    expect(w).toMatchObject({ perDay: 5, perWeek: 35, allowancePerWeek: 51, recent: { units: 60, days: 12, perDay: 5, perWeek: 35 } });
+  });
+
+  it("measures the last week from the reading nearest seven days earlier", () => {
+    const w = meterWatch({
+      ...base,
+      readings: [
+        { reading: 866, readAt: "2026-10-14T00:00:00Z" },
+        { reading: 901, readAt: "2026-10-21T00:00:00Z" },
+        { reading: 950, readAt: "2026-10-28T00:00:00Z" },
+      ],
+      now: "2026-10-28T08:00:00Z",
+    });
+    expect(w).toMatchObject({ used: 109, perDay: 5.7, perWeek: 40, allowancePerDay: 7.5, allowancePerWeek: 52, recent: { units: 49, days: 7, perDay: 7, perWeek: 49 } });
+  });
+
+  it("has no recent week until readings are three days apart", () => {
+    const w = meterWatch({ ...base, baselineDate: "2026-10-20", readings: [{ reading: 851, readAt: "2026-10-21T00:00:00Z" }], now: "2026-10-21T08:00:00Z" });
+    expect(w).toMatchObject({ recent: null, perWeek: null });
+  });
+});

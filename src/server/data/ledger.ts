@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import {
-  computeSettlement,
+  chainSettlements,
   overrideToSpec,
   parseRupeesToPaisa,
   ruleToSpec,
@@ -198,22 +198,33 @@ export type PeriodLedger = {
   settlement: Settlement;
 };
 
+/**
+ * The requested months with their settlements. Balances run on from month to month, so every
+ * earlier month is settled too (oldest first) to know what each month opens with.
+ */
 export async function getPeriodLedgers(periods: Period[]): Promise<PeriodLedger[]> {
   if (periods.length === 0) return [];
   const ref = await getReference();
-  const ids = periods.map((p) => p.id);
+  const ym = (p: { year: number; month: number }) => p.year * 12 + p.month;
+  const latest = Math.max(...periods.map(ym));
+  const chain = ref.periods.filter((p) => ym(p) <= latest).sort((a, b) => ym(a) - ym(b));
+  for (const p of periods) if (!chain.some((c) => c.id === p.id)) chain.push(p);
+  const ids = chain.map((p) => p.id);
   const [expenses, payments] = await Promise.all([getExpenses(ids), getPayments({ periodIds: ids })]);
-  const units = unitRefs(ref.units);
-  return periods.map((period) => {
-    const pe = expenses.filter((e) => e.period_id === period.id);
-    const pp = payments.filter((p) => p.period_id === period.id);
-    const settlement = computeSettlement({
-      units,
-      expenses: pe.map((e) => toExpenseInput(e, ref.rules, ref.sections)),
-      payments: pp
-        .filter((p) => p.status === "approved")
+  const settlements = chainSettlements(
+    unitRefs(ref.units),
+    chain.map((period) => ({
+      key: period.id,
+      expenses: expenses.filter((e) => e.period_id === period.id).map((e) => toExpenseInput(e, ref.rules, ref.sections)),
+      payments: payments
+        .filter((p) => p.period_id === period.id && p.status === "approved")
         .map((p) => ({ unitId: p.payer_unit_id, amountPaisa: toPaisa(p.amount)! })),
-    });
-    return { period, expenses: pe, payments: pp, settlement };
-  });
+    })),
+  );
+  return periods.map((period) => ({
+    period,
+    expenses: expenses.filter((e) => e.period_id === period.id),
+    payments: payments.filter((p) => p.period_id === period.id),
+    settlement: settlements.get(period.id)!,
+  }));
 }

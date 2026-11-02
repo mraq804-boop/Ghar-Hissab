@@ -76,6 +76,7 @@ export async function buildReport(type: ReportType, f: ReportFilters): Promise<R
         total: l.settlement.grandTotal,
         shared: l.settlement.splitTotal,
         personal: l.settlement.unsplitTotal,
+        broughtForward: l.settlement.units.reduce((a, u) => a + (u.broughtForwardPaisa < 0n ? -u.broughtForwardPaisa : 0n), 0n),
         paid: l.settlement.totals.paidPaisa,
         outstanding: l.settlement.units.reduce((a, u) => a + (u.balancePaisa < 0n ? -u.balancePaisa : 0n), 0n),
       }));
@@ -87,11 +88,20 @@ export async function buildReport(type: ReportType, f: ReportFilters): Promise<R
           { key: "total", label: "All expenses", kind: "money" },
           { key: "shared", label: "Shared", kind: "money" },
           { key: "personal", label: "Not shared", kind: "money" },
+          { key: "broughtForward", label: "Owed from month before", kind: "money" },
           { key: "paid", label: "Approved payments", kind: "money" },
-          { key: "outstanding", label: "Still owed", kind: "money" },
+          { key: "outstanding", label: "Still owed at month end", kind: "money" },
         ],
         rows,
-        totals: { month: "Total", total: sum(rows, "total"), shared: sum(rows, "shared"), personal: sum(rows, "personal"), paid: sum(rows, "paid"), outstanding: sum(rows, "outstanding") },
+        totals: {
+          month: "Total",
+          total: sum(rows, "total"),
+          shared: sum(rows, "shared"),
+          personal: sum(rows, "personal"),
+          broughtForward: null,
+          paid: sum(rows, "paid"),
+          outstanding: rows.length ? rows[rows.length - 1].outstanding : 0n,
+        },
       };
     }
     case "annual": {
@@ -125,11 +135,11 @@ export async function buildReport(type: ReportType, f: ReportFilters): Promise<R
         for (const u of allowedUnits) row[u.id] = l.settlement.units.find((x) => x.unitId === u.id)![field];
         return row;
       });
-      const totals: Record<string, Cell> = { month: "Total" };
-      for (const u of allowedUnits) totals[u.id] = sum(rows, u.id);
+      const totals: Record<string, Cell> = { month: type === "balances" ? "Latest" : "Total" };
+      for (const u of allowedUnits) totals[u.id] = type === "balances" ? (rows.length ? rows[rows.length - 1][u.id] : 0n) : sum(rows, u.id);
       return {
         ...base,
-        title: type === "contributions" ? "Household contributions (approved payments)" : type === "shares" ? "Household expense shares" : "Outstanding balances (paid minus share)",
+        title: type === "contributions" ? "Household contributions (approved payments)" : type === "shares" ? "Household expense shares" : "Balance at month end (carried on to the next month; + gets back, - still owes)",
         columns: [{ key: "month", label: "Month", kind: "text" }, ...unitCols],
         rows,
         totals,

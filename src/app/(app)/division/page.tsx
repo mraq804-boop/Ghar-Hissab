@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Money } from "@/components/ledger/money";
 import { EmptyState, PageHeader, Panel } from "@/components/ledger/page-header";
 import { StatusBadge } from "@/components/ledger/status-badge";
-import { describeSpec, formatPaisa, largestRemainder, paisaToNumber, ruleToSpec, splitFractions, splitKey, type SplitSpec } from "@/lib/finance";
+import { describeSpec, formatPaisa, largestRemainder, paisaToNumber, ruleToSpec, splitFractions, splitKey, type SplitSpec, broughtForwardText, coveredPercent, paymentUseText } from "@/lib/finance";
 import { periodLabel, resolvePeriod } from "@/lib/periods";
 import { canSeeAllBalances, getContext } from "@/server/auth";
 import { getPeriodLedgers, getReference } from "@/server/data/ledger";
@@ -61,6 +61,12 @@ async function Division({ searchParams }: { searchParams: PageProps<"/division">
   const unsplit = s.rulePools.find((p) => p.split.type === "none");
   const visible = s.units.filter((u) => seeAll || u.unitId === ctx.unitId);
   const maxShare = Math.max(1, ...s.units.map((u) => paisaToNumber(u.sharePaisa)));
+  const ym = (p: { year: number; month: number }) => p.year * 12 + p.month;
+  const previousPeriod = ref.periods.filter((p) => ym(p) < ym(period)).sort((a, b) => ym(b) - ym(a))[0] ?? null;
+  const nextPeriod = ref.periods.filter((p) => ym(p) > ym(period)).sort((a, b) => ym(a) - ym(b))[0] ?? null;
+  const prevName = previousPeriod ? periodLabel(previousPeriod) : "";
+  const thisName = periodLabel(period);
+  const hasCarry = s.units.some((u) => u.broughtForwardPaisa !== 0n);
 
   const settleUp = s.units
     .filter((u) => purse && u.unitId !== purse.id && (u.balancePaisa <= -50n || u.balancePaisa >= 50n))
@@ -118,10 +124,17 @@ async function Division({ searchParams }: { searchParams: PageProps<"/division">
       </Panel>
 
       <div className="grid gap-6 lg:grid-cols-5">
-        <Panel className="lg:col-span-3" title="Settlement" description="Share against approved payments" bodyClassName="p-0">
+        <Panel
+          className="lg:col-span-3"
+          title="Settlement"
+          description={hasCarry ? `Brought forward from ${prevName}, plus approved payments, against this month's share` : "Share against approved payments"}
+          bodyClassName="p-0"
+        >
           <ul className="divide-y">
             {visible.map((u) => {
-              const paidPct = u.sharePaisa > 0n ? Math.min(100, (paisaToNumber(u.paidPaisa) / paisaToNumber(u.sharePaisa)) * 100) : 0;
+              const paidPct = coveredPercent(u.sharePaisa, u.broughtForwardPaisa, u.paidPaisa);
+              const carried = broughtForwardText(u.broughtForwardPaisa, prevName);
+              const used = paymentUseText(u.paidPaisa, u.clearedPreviousPaisa, prevName, thisName);
               return (
                 <li key={u.unitId} className="px-5 py-4">
                   <div className="flex items-center justify-between gap-3">
@@ -134,9 +147,18 @@ async function Division({ searchParams }: { searchParams: PageProps<"/division">
                   <div className="mt-3 h-3 overflow-hidden rounded-full bg-muted" style={{ width: `${(paisaToNumber(u.sharePaisa) / maxShare) * 100}%` }}>
                     <div className="h-full rounded-full bg-chart-2" style={{ width: `${paidPct}%` }} />
                   </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Paid <Money paisa={u.paidPaisa} className="text-foreground" /> of <Money paisa={u.sharePaisa} className="text-foreground" />
-                  </p>
+                  <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+                    {carried ? (
+                      <>
+                        <dt>Brought forward</dt>
+                        <dd className={cn("text-right", u.broughtForwardPaisa < 0n ? "text-destructive" : "text-success")}>{carried}</dd>
+                      </>
+                    ) : null}
+                    <dt>Paid this month</dt>
+                    <dd className="text-right text-foreground"><Money paisa={u.paidPaisa} />{used ? <span className="block text-muted-foreground">{used}</span> : null}</dd>
+                    <dt>{thisName} share</dt>
+                    <dd className="text-right text-foreground"><Money paisa={u.sharePaisa} /></dd>
+                  </dl>
                 </li>
               );
             })}
@@ -144,6 +166,7 @@ async function Division({ searchParams }: { searchParams: PageProps<"/division">
           <div className="flex justify-between border-t bg-muted/40 px-5 py-3 text-sm font-semibold">
             <span>Totals</span>
             <span className="flex gap-4">
+              {hasCarry ? <span>From {prevName} <Money paisa={s.totals.broughtForwardPaisa} signed /></span> : null}
               <span>Paid <Money paisa={s.totals.paidPaisa} /></span>
               <Money paisa={s.totals.balancePaisa} signed tone="auto" />
             </span>
@@ -152,8 +175,10 @@ async function Division({ searchParams }: { searchParams: PageProps<"/division">
 
         <Panel className="lg:col-span-2" title="Settle up" description={purse ? `${purse.code} holds the household purse` : undefined}>
           {settleUp.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Everyone is square for this month.</p>
+              <p className="py-6 text-center text-sm text-muted-foreground">Everyone is square for this month.</p>
           ) : (
+            <>
+            {nextPeriod ? <p className="mb-3 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">These amounts carry into {periodLabel(nextPeriod)}. Paying there clears them first.</p> : null}
             <ul className="space-y-3">
               {settleUp.map((t, i) => (
                 <li key={i} className={cn("flex items-center gap-3 rounded-xl border p-3")}>
@@ -167,6 +192,7 @@ async function Division({ searchParams }: { searchParams: PageProps<"/division">
                 </li>
               ))}
             </ul>
+            </>
           )}
         </Panel>
       </div>

@@ -5,7 +5,9 @@ export type SummaryInput = {
   monthLabel: string;
   sharedPaisa: Paisa;
   purseCode: string | null;
-  units: { code: string; sharePaisa: Paisa; paidPaisa: Paisa; balancePaisa: Paisa; status: SettlementStatus }[];
+  units: { code: string; sharePaisa: Paisa; paidPaisa: Paisa; broughtForwardPaisa?: Paisa; balancePaisa: Paisa; status: SettlementStatus }[];
+  /** The month balances were carried from, e.g. "October". */
+  carriedFrom?: string | null;
   billsNotIssued: string[];
   pendingPayments: number;
   link: string | null;
@@ -28,7 +30,10 @@ function standing(u: SummaryInput["units"][number]) {
 export function buildMonthSummary(s: SummaryInput): string {
   const lines = [`*Ghar Hisaab · ${s.monthLabel}*`, `Shared spending: ${formatPaisa(s.sharedPaisa)}`, ""];
   for (const u of s.units) {
-    lines.push(`*${u.code}*: share ${formatPaisa(u.sharePaisa)}, paid ${formatPaisa(u.paidPaisa)}, ${standing(u)}`);
+    const bf = u.broughtForwardPaisa ?? 0n;
+    const carried =
+      s.carriedFrom && (bf <= -50n || bf >= 50n) ? `${bf > 0n ? "extra" : "owed"} from ${s.carriedFrom} ${formatPaisa(bf > 0n ? bf : -bf)}, ` : "";
+    lines.push(`*${u.code}*: ${carried}share ${formatPaisa(u.sharePaisa)}, paid ${formatPaisa(u.paidPaisa)}, ${standing(u)}`);
   }
 
   const owing = s.units.filter((u) => u.code !== s.purseCode && u.balancePaisa <= -50n);

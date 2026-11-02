@@ -80,6 +80,11 @@ export type UnitSettlement = {
   exactShare: number;
   sharePaisa: Paisa;
   paidPaisa: Paisa;
+  /** Balance carried in from the month before: positive is credit, negative is still owed. */
+  broughtForwardPaisa: Paisa;
+  /** How much of this month's payments went to clear what was still owed from before. */
+  clearedPreviousPaisa: Paisa;
+  /** Running balance: brought forward + paid - share. */
   balancePaisa: Paisa;
   status: SettlementStatus;
 };
@@ -94,7 +99,7 @@ export type Settlement = {
   unsplitTotal: Paisa;
   rulePools: RulePool[];
   pendingBillCount: number;
-  totals: { sharePaisa: Paisa; paidPaisa: Paisa; balancePaisa: Paisa };
+  totals: { sharePaisa: Paisa; paidPaisa: Paisa; broughtForwardPaisa: Paisa; balancePaisa: Paisa };
 };
 
 export function settlementStatus(hasPayment: boolean, balance: Paisa): SettlementStatus {
@@ -107,6 +112,8 @@ export function computeSettlement(input: {
   units: UnitRef[];
   expenses: ExpenseInput[];
   payments: PaymentInput[];
+  /** Each household's closing balance from the month before (see `chainSettlements`). */
+  broughtForward?: Map<string, Paisa>;
   step?: Paisa;
 }): Settlement {
   const step = input.step ?? RUPEE;
@@ -155,15 +162,19 @@ export function computeSettlement(input: {
   const rows: UnitSettlement[] = units.map((u) => {
     const sharePaisa = rounded.get(u.id) ?? 0n;
     const paidPaisa = paid.get(u.id) ?? 0n;
-    const balancePaisa = paidPaisa - sharePaisa;
+    const broughtForwardPaisa = input.broughtForward?.get(u.id) ?? 0n;
+    const balancePaisa = broughtForwardPaisa + paidPaisa - sharePaisa;
+    const owedBefore = broughtForwardPaisa < 0n ? -broughtForwardPaisa : 0n;
     return {
       unitId: u.id,
       code: u.code,
       exactShare: ratToNumber(exact.get(u.id)!) / 100,
       sharePaisa,
       paidPaisa,
+      broughtForwardPaisa,
+      clearedPreviousPaisa: paidPaisa < owedBefore ? paidPaisa : owedBefore,
       balancePaisa,
-      status: settlementStatus(paid.has(u.id), balancePaisa),
+      status: settlementStatus(paid.has(u.id) || broughtForwardPaisa !== 0n, balancePaisa),
     };
   });
 
@@ -171,9 +182,10 @@ export function computeSettlement(input: {
     (a, r) => ({
       sharePaisa: a.sharePaisa + r.sharePaisa,
       paidPaisa: a.paidPaisa + r.paidPaisa,
+      broughtForwardPaisa: a.broughtForwardPaisa + r.broughtForwardPaisa,
       balancePaisa: a.balancePaisa + r.balancePaisa,
     }),
-    { sharePaisa: 0n, paidPaisa: 0n, balancePaisa: 0n },
+    { sharePaisa: 0n, paidPaisa: 0n, broughtForwardPaisa: 0n, balancePaisa: 0n },
   );
 
   return {
@@ -186,4 +198,24 @@ export function computeSettlement(input: {
     pendingBillCount,
     totals,
   };
+}
+
+/**
+ * Settles months in order, each opening with the households' closing balances from the month before:
+ * someone who still owed starts the next month owing it (their next payments clear it first), and
+ * someone who paid extra starts with that much credit. Months must be given oldest first.
+ */
+export function chainSettlements<K>(
+  units: UnitRef[],
+  months: { key: K; expenses: ExpenseInput[]; payments: PaymentInput[] }[],
+  step?: Paisa,
+): Map<K, Settlement> {
+  const out = new Map<K, Settlement>();
+  let carry = new Map<string, Paisa>();
+  for (const m of months) {
+    const settlement = computeSettlement({ units, expenses: m.expenses, payments: m.payments, broughtForward: carry, step });
+    out.set(m.key, settlement);
+    carry = new Map(settlement.units.map((u) => [u.unitId, u.balancePaisa]));
+  }
+  return out;
 }

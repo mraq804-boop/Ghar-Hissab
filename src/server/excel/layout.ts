@@ -198,16 +198,20 @@ export function renderPeriodSheet(input: {
   units.forEach((u, i) => {
     const s = input.settlement.units.find((x) => x.unitId === u.id)!;
     const paid = input.paidByUnit.get(u.id);
+    const carried = paisaToNumber(s.broughtForwardPaisa);
+    const carry = carried > 0 ? `+${carried}` : carried < 0 ? `${carried}` : "";
     rows.push({
       r,
       style: i % 2 === 0 ? "settle" : "settleAlt",
       cells: pad([
         i + 1,
         text(u.code),
-        `=IF(F${r}="","Not paid",IF(ROUND(G${r},0)=0,"Settled",IF(G${r}>0,"Gets back","To pay")))`,
+        carried === 0
+          ? `=IF(F${r}="","Not paid",IF(ROUND(G${r},0)=0,"Settled",IF(G${r}>0,"Gets back","To pay")))`
+          : `=IF(ROUND(G${r},0)=0,"Settled",IF(G${r}>0,"Gets back","To pay"))`,
         paisaToNumber(s.sharePaisa),
         paid === undefined ? null : paisaToNumber(paid),
-        `=F${r}-E${r}`,
+        `=F${r}-E${r}${carry}`,
         null,
         `settle:${u.code}`,
       ]),
@@ -224,7 +228,15 @@ export function renderPeriodSheet(input: {
   checks.push({ cell: `F${r}`, label: "Paid total", expected: paisaToNumber(input.settlement.totals.paidPaisa) });
   r += 2;
 
+  const carriedUnits = input.settlement.units.filter((u) => u.broughtForwardPaisa !== 0n);
   const notes = [
+    ...(carriedUnits.length
+      ? [
+          `Brought forward from the month before (already included in column G): ${carriedUnits
+            .map((u) => `${u.code} ${u.broughtForwardPaisa > 0n ? "+" : "-"}${Math.abs(paisaToNumber(u.broughtForwardPaisa)).toLocaleString("en-US")}`)
+            .join(", ")}. Payments clear what was owed before first.`,
+        ]
+      : []),
     "Share (column E) is rounded to whole rupees so the three shares add up exactly to the split total; column G above keeps the exact figures.",
     "Settlement: Paid is the total of payments the administrator has approved in the app. Return (+) means they get money back; To Pay (-) means they still owe.",
     SYNC_NOTE,

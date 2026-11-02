@@ -186,10 +186,13 @@ export async function loadPeriodForSync(admin: SupabaseClient, householdId: stri
   const paid = new Map<string, bigint>();
   for (const p of payments.data!) paid.set(p.payer_unit_id, (paid.get(p.payer_unit_id) ?? 0n) + parseRupeesToPaisa(String(p.amount)));
 
+  const { broughtForwardFor } = await import("@/server/data/carry");
+  const broughtForward = await broughtForwardFor(admin, householdId, period.data!.year, period.data!.month);
   const settlement = computeSettlement({
     units: unitRefs,
     expenses: layoutExpenses.map((e) => ({ id: e.id, amountPaisa: e.amountPaisa, split: e.spec, section: e.sectionKey })),
     payments: [...paid].map(([unitId, amountPaisa]) => ({ unitId, amountPaisa })),
+    broughtForward,
   });
 
   return { period: period.data!, units: unitRefs, expenses: layoutExpenses, paid, settlement, ruleCodes: ruleRows.map((r) => r.code) };

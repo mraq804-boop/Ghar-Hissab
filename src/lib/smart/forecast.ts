@@ -20,7 +20,7 @@ const MONTHLY_SECTIONS = new Set(["MILK_MEAT", "HOUSE_HELP", "BILLS"]);
  * Estimates where the month will end: what is already recorded plus the regular items that
  * have not been entered yet, each at its usual amount and split. `previous` is newest first.
  */
-export function forecastMonth(input: { units: UnitRef[]; current: ForecastMonth; previous: ForecastMonth[]; payments: PaymentInput[] }): Forecast | null {
+export function forecastMonth(input: { units: UnitRef[]; current: ForecastMonth; previous: ForecastMonth[]; payments: PaymentInput[]; broughtForward?: Map<string, bigint> }): Forecast | null {
   const recent = input.previous.slice(0, 3);
   if (!recent.length) return null;
 
@@ -59,8 +59,8 @@ export function forecastMonth(input: { units: UnitRef[]; current: ForecastMonth;
 
   const toInput = (items: ForecastItem[]) =>
     items.map((i, n) => ({ id: String(n), amountPaisa: i.amountPaisa, split: i.split, section: i.sectionKey }));
-  const now = computeSettlement({ units: input.units, expenses: toInput(input.current.items), payments: input.payments });
-  const projected = computeSettlement({ units: input.units, expenses: toInput([...input.current.items, ...extra]), payments: input.payments });
+  const now = computeSettlement({ units: input.units, expenses: toInput(input.current.items), payments: input.payments, broughtForward: input.broughtForward });
+  const projected = computeSettlement({ units: input.units, expenses: toInput([...input.current.items, ...extra]), payments: input.payments, broughtForward: input.broughtForward });
 
   return {
     recordedPaisa: now.splitTotal,

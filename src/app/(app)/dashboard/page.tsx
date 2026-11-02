@@ -10,7 +10,7 @@ import { EmptyState, Panel } from "@/components/ledger/page-header";
 import { StatusBadge } from "@/components/ledger/status-badge";
 import { UrlSelect } from "@/components/ledger/url-select";
 import { CategoryChart, TrendChart } from "@/components/dashboard/charts";
-import { formatPaisa, paisaToNumber } from "@/lib/finance";
+import { broughtForwardText, coveredPercent, formatPaisa, paisaToNumber, paymentUseText } from "@/lib/finance";
 import { periodLabel, periodSlug } from "@/lib/periods";
 import { getDashboard } from "@/server/data/dashboard";
 import { toPaisa } from "@/server/data/ledger";
@@ -84,6 +84,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
         units: s.units,
         billsNotIssued: d.billsNotIssued,
         pendingPayments: d.pendingPayments,
+        carriedFrom: d.carryFrom ? periodLabel(d.carryFrom) : null,
         link: `${publicEnv.NEXT_PUBLIC_SITE_URL}/division?m=${slug}`,
       })
     : null;
@@ -210,7 +211,9 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
 
         <div className={cn("-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 md:mx-0 md:grid md:overflow-visible md:px-0 md:pb-0", d.visibleUnits.length > 1 ? "md:grid-cols-3" : "md:grid-cols-1")}>
           {d.visibleUnits.map((u) => {
-            const pct = u.sharePaisa > 0n ? Math.min(100, Math.round((paisaToNumber(u.paidPaisa) / paisaToNumber(u.sharePaisa)) * 100)) : 0;
+            const pct = coveredPercent(u.sharePaisa, u.broughtForwardPaisa, u.paidPaisa);
+            const carried = d.carryFrom ? broughtForwardText(u.broughtForwardPaisa, periodLabel(d.carryFrom)) : null;
+            const used = d.carryFrom ? paymentUseText(u.paidPaisa, u.clearedPreviousPaisa, periodLabel(d.carryFrom), periodLabel(d.period)) : null;
             const unit = d.units.find((x) => x.id === u.unitId);
             const owes = u.balancePaisa < 0n;
             return (
@@ -231,10 +234,12 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
                   </span>
                   <span className="num text-xs text-muted-foreground">{pct}%</span>
                 </p>
+                {carried ? <p className={cn("mt-1 text-xs", u.broughtForwardPaisa < 0n ? "text-destructive" : "text-success")}>{carried}</p> : null}
+                {used ? <p className="mt-0.5 text-xs text-muted-foreground">{used}</p> : null}
                 <div
                   className="mt-2 h-2 overflow-hidden rounded-full bg-muted"
                   role="progressbar"
-                  aria-label={`${u.code} has paid ${pct}% of their share`}
+                  aria-label={`${u.code} has covered ${pct}% of their share`}
                   aria-valuenow={pct}
                   aria-valuemin={0}
                   aria-valuemax={100}
@@ -253,6 +258,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
                       Gets back <Money paisa={u.balancePaisa} />
                     </span>
                   )}
+                  {d.nextPeriod && u.balancePaisa !== 0n ? <span className="ml-2 text-xs text-muted-foreground">carried to {periodLabel(d.nextPeriod)}</span> : null}
                 </p>
               </article>
             );
@@ -342,8 +348,8 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
               </AttentionItem>
             ) : null}
             {d.overdue.map((o) => (
-              <AttentionItem key={`${o.period.id}-${o.unit.unitId}`} href={`/division?m=${periodSlug(o.period)}`} icon={AlertTriangle} tone="danger" title={`${o.unit.code} owes ${formatPaisa(-o.unit.balancePaisa)}`}>
-                From {periodLabel(o.period, true)}
+              <AttentionItem key={`${o.period.id}-${o.unit.unitId}`} href={`/division?m=${periodSlug(o.period)}`} icon={AlertTriangle} tone="danger" title={`${o.unit.code} still owes ${formatPaisa(o.amountPaisa)} from ${periodLabel(o.period)}`}>
+                Their next payment clears this first
               </AttentionItem>
             ))}
             {d.meterNotices.map((m) => (
