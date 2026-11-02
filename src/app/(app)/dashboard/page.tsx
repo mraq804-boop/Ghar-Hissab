@@ -89,8 +89,28 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
       })
     : null;
 
+  const familyPart = s.units.length ? ((s.splitTotal / BigInt(s.units.length) + 500n) / 1000n) * 1000n : 0n;
+  const collectedPct = s.splitTotal > 0n ? Math.min(100, Math.round((paisaToNumber(d.collected) / paisaToNumber(s.splitTotal)) * 100)) : 0;
+
   return (
     <div className="space-y-6 md:space-y-8">
+      <section aria-label="This month at a glance" className="rounded-[22px] bg-[#1b2340] px-5 py-6 text-[#f6f7fb] dark:border dark:border-white/10 sm:px-6">
+        <p className="text-[15px] text-[#c9cfe3]">
+          {d.period.status === "closed" ? `In ${periodLabel(d.period)} the house spent` : "This month the house spent"}
+        </p>
+        <p className="num mt-1 font-heading text-[2.6rem] leading-[1.05] font-extrabold sm:text-5xl">{formatPaisa(s.splitTotal)}</p>
+        {s.units.length > 1 ? (
+          <p className="mt-2 text-[15px] text-[#c9cfe3]">
+            Each family&apos;s part is about <strong className="num text-white">{formatPaisa(familyPart)}</strong>
+          </p>
+        ) : null}
+        <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-white/15" aria-hidden>
+          <div className="h-full rounded-full bg-haldi" style={{ width: `${collectedPct}%` }} />
+        </div>
+        <p className="mt-1.5 text-sm text-[#c9cfe3]">
+          <span className="num">{formatPaisa(d.collected)}</span> collected so far
+        </p>
+      </section>
       {d.suggestPush ? (
         <Link href="/notifications" className="flex items-center gap-3 rounded-2xl border border-haldi/40 bg-accent/40 px-4 py-3 text-sm hover:bg-accent/60">
           <BellRing className="size-5 shrink-0 text-haldi" />
