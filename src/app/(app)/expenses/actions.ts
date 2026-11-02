@@ -4,10 +4,12 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { SplitError, exactShares, specToStored } from "@/lib/finance";
 import { computeAmountPaisa, splitInputToSpec } from "@/lib/finance/expense-preview";
-import { paisaToDecimalString } from "@/lib/finance/money";
+import { formatPaisa, paisaToDecimalString } from "@/lib/finance/money";
 import { expenseInputSchema, type ExpenseInputForm } from "@/lib/validation/expense";
 import { getContext, isAdmin } from "@/server/auth";
-import { getReference } from "@/server/data/ledger";
+import { getExpenses, getReference, toPaisa } from "@/server/data/ledger";
+import { insertCopies } from "@/server/data/copy-expenses";
+import { dailyFoodToCarry } from "@/lib/expenses/copy";
 import { dbError, forbidden, invalid, type ActionResult } from "@/server/actions/result";
 import { kickSync } from "@/server/excel/kick";
 
@@ -87,9 +89,34 @@ export async function startPeriod(input: z.input<typeof periodSchema>): Promise<
   if (!parsed.success) return invalid(parsed.error);
   const { data, error } = await ctx.supabase.rpc("ensure_period", { h: ctx.householdId, y: parsed.data.year, m: parsed.data.month });
   if (error) return dbError(error);
+  const carried = await carryDailyFood(data as string, parsed.data.year, parsed.data.month);
   revalidatePath("/", "layout");
   kickSync();
-  return { ok: true, data: { id: data as string }, message: "Month started" };
+  return { ok: true, data: { id: data as string }, message: carried ? `Month started. ${carried} added from last month.` : "Month started" };
+}
+
+/** Puts last month's daily food (milk, sabzi, chicken & meat) into a new month at the same kg and rate. */
+async function carryDailyFood(periodId: string, year: number, month: number) {
+  const ctx = await getContext();
+  const ref = await getReference();
+  const previous = ref.periods
+    .filter((p) => p.year * 12 + p.month < year * 12 + month)
+    .sort((a, b) => b.year * 12 + b.month - (a.year * 12 + a.month))[0];
+  const target = ref.periods.find((p) => p.id === periodId);
+  if (!previous || target?.status === "closed") return null;
+  const dailyFood = new Set(ref.categories.filter((c) => c.kind === "variable").map((c) => c.id));
+  const [source, existing] = await Promise.all([getExpenses([previous.id]), getExpenses([periodId])]);
+  const sectionOrder = (id: string) => ref.sections.findIndex((s) => s.id === id);
+  const rows = dailyFoodToCarry(
+    source.map((e) => ({ ...e, categoryId: e.category_id })),
+    existing.map((e) => ({ title: e.title, categoryId: e.category_id })),
+    dailyFood,
+  ).sort((a, b) => sectionOrder(a.section_id) - sectionOrder(b.section_id) || a.sort_order - b.sort_order);
+  if (!rows.length) return null;
+  const { count } = await insertCopies(ctx.supabase, ctx.householdId, periodId, rows);
+  if (!count) return null;
+  const total = rows.slice(0, count).reduce((a, e) => a + (toPaisa(e.amount) ?? 0n), 0n);
+  return `${count} daily food item${count === 1 ? "" : "s"} (${formatPaisa(total)})`;
 }
 
 const statusSchema = z.object({ periodId: z.uuid(), status: z.enum(["open", "closed"]) });

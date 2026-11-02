@@ -6,6 +6,7 @@ import { formatPaisa } from "@/lib/finance/money";
 import { copyTotal, type CopyItem } from "@/lib/expenses/copy";
 import { getContext, isAdmin } from "@/server/auth";
 import { getExpenses, getReference, toPaisa } from "@/server/data/ledger";
+import { insertCopies } from "@/server/data/copy-expenses";
 import { dbError, forbidden, invalid, type ActionResult } from "@/server/actions/result";
 import { kickSync } from "@/server/excel/kick";
 
@@ -60,36 +61,14 @@ export async function copyExpenses(input: z.input<typeof copySchema>): Promise<A
     .sort((a, b) => sectionOrder(a.section_id) - sectionOrder(b.section_id) || a.sort_order - b.sort_order);
   if (rows.length !== wanted.size) return { ok: false, error: "Some items changed. Open the list again and retry." };
 
-  let count = 0;
-  for (const e of rows) {
-    const { error } = await ctx.supabase.rpc("upsert_expense", {
-      p: {
-        household_id: ctx.householdId,
-        period_id: v.toPeriodId,
-        section_id: e.section_id,
-        category_id: e.category_id,
-        title: e.title,
-        description: e.description ?? "",
-        qty_text: e.qty_text ?? "",
-        qty_num: e.qty_num ?? "",
-        rate: e.rate ?? "",
-        amount: e.amount ?? "",
-        split_rule_id: e.split_rule_id,
-        split_override: e.split_override,
-        expense_date: "",
-        paid_by_unit_id: null,
-        notes: "",
-      },
-    });
-    if (error) {
-      if (count) {
-        revalidatePath("/", "layout");
-        kickSync();
-      }
-      const failed = dbError(error);
-      return { ok: false, error: `${count} copied, then "${e.title}" failed: ${failed.ok ? "" : failed.error}` };
+  const { count, failed } = await insertCopies(ctx.supabase, ctx.householdId, v.toPeriodId, rows);
+  if (failed) {
+    if (count) {
+      revalidatePath("/", "layout");
+      kickSync();
     }
-    count++;
+    const why = dbError(failed.error);
+    return { ok: false, error: `${count} copied, then "${failed.title}" failed: ${why.ok ? "" : why.error}` };
   }
 
   revalidatePath("/", "layout");

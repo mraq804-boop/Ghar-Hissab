@@ -37,3 +37,11 @@ export function copyTotal(items: CopyItem[], ids: Iterable<string>) {
   const chosen = new Set(ids);
   return items.filter((i) => chosen.has(i.id)).reduce((a, i) => a + (i.amountPaisa ?? 0n), 0n);
 }
+
+/**
+ * Which of last month's items to carry into a new month automatically: those in a daily-food category
+ * that the new month doesn't have yet.
+ */
+export function dailyFoodToCarry<T extends { title: string; categoryId: string | null }>(source: T[], target: { title: string; categoryId: string | null }[], dailyFoodIds: Set<string>) {
+  return source.filter((e) => e.categoryId !== null && dailyFoodIds.has(e.categoryId) && !target.some((t) => sameItem(t, e)));
+}

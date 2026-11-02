@@ -19,7 +19,7 @@ export function StartMonth({ year, month, variant = "default" }: { year: number;
         start(async () => {
           const r = await startPeriod({ year, month });
           if (r.ok) {
-            toast.success(`${MONTHS_LONG[month - 1]} ${year} started`);
+            toast.success(r.message === "Month started" ? `${MONTHS_LONG[month - 1]} ${year} started` : `${MONTHS_LONG[month - 1]} ${year} started. ${r.message?.replace("Month started. ", "")}`);
             router.push(`/expenses?m=${year}-${String(month).padStart(2, "0")}`);
           } else toast.error(r.error);
         })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { copyTotal, defaultTicks, groupForCopy, type CopyItem } from "@/lib/expenses/copy";
+import { copyTotal, dailyFoodToCarry, defaultTicks, groupForCopy, type CopyItem } from "@/lib/expenses/copy";
 
 const rs = (n: number) => BigInt(n) * 100n;
 const items: CopyItem[] = [
@@ -30,5 +30,22 @@ describe("copyTotal", () => {
   it("adds the chosen amounts, counting bills not issued as zero", () => {
     expect(copyTotal(items, ["atta", "oil", "wapda"])).toBe(rs(5500));
     expect(copyTotal(items, [])).toBe(0n);
+  });
+});
+
+describe("dailyFoodToCarry", () => {
+  it("carries daily-food items the new month doesn't have yet", () => {
+    const carried = dailyFoodToCarry(
+      [
+        { title: "Chicken", categoryId: "meat" },
+        { title: "Mutton", categoryId: "meat" },
+        { title: "Milk", categoryId: "milk" },
+        { title: "Atta", categoryId: "groc" },
+        { title: "Loose", categoryId: null },
+      ],
+      [{ title: "chicken", categoryId: "meat" }],
+      new Set(["meat", "milk"]),
+    );
+    expect(carried.map((c) => c.title)).toEqual(["Mutton", "Milk"]);
   });
 });
