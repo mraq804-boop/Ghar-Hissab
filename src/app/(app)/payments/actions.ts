@@ -7,6 +7,7 @@ import { paymentInputSchema, reviewSchema, sniffMime, type PaymentInputForm } fr
 import { getContext, isAdmin } from "@/server/auth";
 import { dbError, forbidden, invalid, type ActionResult } from "@/server/actions/result";
 import { kickSync } from "@/server/excel/kick";
+import { createSupabaseAdmin } from "@/server/supabase/admin";
 import { onPaymentReviewed, onPaymentSubmitted } from "@/server/notify/events";
 
 export async function submitPayment(input: PaymentInputForm): Promise<ActionResult<{ id: string; duplicateScreenshot: boolean; replayed: boolean }>> {
@@ -90,4 +91,23 @@ export async function proofUrl(paymentId: string): Promise<ActionResult<{ url: s
   const { data, error } = await ctx.supabase.storage.from("payment-proofs").createSignedUrl(att.storage_path, 60);
   if (error || !data) return { ok: false, error: "The screenshot could not be opened." };
   return { ok: true, data: { url: data.signedUrl, mime: att.mime_type } };
+}
+
+const removeSchema = z.object({ paymentId: z.uuid(), version: z.number().int().positive() });
+
+export async function removePayment(input: z.input<typeof removeSchema>): Promise<ActionResult> {
+  const ctx = await getContext();
+  if (!isAdmin(ctx)) return forbidden;
+  const parsed = removeSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const { data, error } = await ctx.supabase.rpc("delete_payment", { payment_id: parsed.data.paymentId, expected_version: parsed.data.version });
+  if (error) return dbError(error);
+  const paths = ((data ?? []) as { path: string }[]).map((r) => r.path).filter((p) => p.startsWith(`${ctx.householdId}/`));
+  if (paths.length) {
+    const { error: gone } = await createSupabaseAdmin().storage.from("payment-proofs").remove(paths);
+    if (gone) console.warn("Payment screenshot left in storage", { count: paths.length });
+  }
+  revalidatePath("/", "layout");
+  kickSync();
+  return { ok: true, data: undefined, message: "Payment removed" };
 }

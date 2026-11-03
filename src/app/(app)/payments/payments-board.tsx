@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { AlertTriangle, Check, ChevronLeft, ChevronRight, Loader2, Plus, Search, Wallet, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronLeft, ChevronRight, Loader2, Plus, Search, Trash2, Wallet, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,7 +16,7 @@ import { StatusBadge } from "@/components/ledger/status-badge";
 import { UrlSelect } from "@/components/ledger/url-select";
 import { methodLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
-import { reviewPayment } from "./actions";
+import { removePayment, reviewPayment } from "./actions";
 import { PaymentForm } from "./payment-form";
 import { ProofViewer } from "./proof-viewer";
 import { ScreenshotCheck } from "./screenshot-check";
@@ -218,7 +218,7 @@ export function PaymentsBoard(p: Props) {
           <div className="hidden lg:block">
             {selected ? (
               <div className="sticky top-24 rounded-2xl border bg-card p-5">
-                <PaymentDetail payment={selected} admin={p.admin} rejecting={rejecting} setRejecting={setRejecting} onReviewed={() => router.refresh()} />
+                <PaymentDetail key={selected.id} payment={selected} admin={p.admin} rejecting={rejecting} setRejecting={setRejecting} onReviewed={() => router.refresh()} />
               </div>
             ) : null}
           </div>
@@ -229,6 +229,7 @@ export function PaymentsBoard(p: Props) {
         <ResponsiveDialog open={mobileDetail && !!selected} onOpenChange={setMobileDetail} title={selected ? `${selected.unitCode} payment` : "Payment"}>
           {selected ? (
             <PaymentDetail
+              key={selected.id}
               payment={selected}
               admin={p.admin}
               rejecting={rejecting}
@@ -287,8 +288,20 @@ function PaymentDetail({
   onReviewed: () => void;
 }) {
   const [reason, setReason] = useState("");
+  const [removing, setRemoving] = useState(false);
   const [pending, start] = useTransition();
   const canReview = admin && r.status === "pending";
+  const canRemove = admin && !r.relatedExpense;
+
+  const remove = () =>
+    start(async () => {
+      const res = await removePayment({ paymentId: r.id, version: r.version });
+      if (res.ok) {
+        toast.success(res.message);
+        setRemoving(false);
+        onReviewed();
+      } else toast.error(res.error);
+    });
 
   const decide = (decision: "approved" | "rejected") =>
     start(async () => {
@@ -370,6 +383,26 @@ function PaymentDetail({
               {pending ? <Loader2 className="animate-spin" /> : <Check />} Approve <kbd className="ml-1 hidden rounded border border-white/40 px-1 text-[10px] lg:inline">A</kbd>
             </Button>
           </div>
+        )
+      ) : null}
+
+      {canRemove ? (
+        removing ? (
+          <div className="space-y-2 rounded-xl border border-destructive/30 bg-danger-soft p-3">
+            <p className="text-sm text-destructive">
+              Remove this <Money paisa={r.amountPaisa} decimals={r.amountPaisa % 100n !== 0n} /> payment from {r.unitCode}? It stops counting toward balances and its screenshot is deleted. This can&apos;t be undone.
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setRemoving(false)} disabled={pending}>Cancel</Button>
+              <Button variant="destructive" className="flex-1" onClick={remove} disabled={pending}>
+                {pending ? <Loader2 className="animate-spin" /> : <Trash2 />} Remove payment
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button variant="ghost" size="sm" className="w-full text-destructive hover:bg-danger-soft hover:text-destructive" onClick={() => setRemoving(true)} disabled={pending}>
+            <Trash2 /> Remove payment
+          </Button>
         )
       ) : null}
     </div>

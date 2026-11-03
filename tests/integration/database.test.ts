@@ -350,6 +350,31 @@ describe("payments", () => {
   it("anonymous users cannot read anything", async () => {
     expect(await rpc("anon", `select id from public.units`)).toEqual([]);
   });
+
+  it("an admin can remove a payment, but not one made by an expense or one in a closed month", async () => {
+    const version = async (id: string) => (await db.query<{ version: number }>(`select version from public.payments where id = $1`, [id])).rows[0].version;
+    const remove = (actor: Parameters<typeof as>[1], id: string, v: number) => rpc<{ path: string }>(actor, `select * from public.delete_payment($1, $2)`, [id, v]);
+
+    await expectDbError(remove(AK_USER, paymentId, await version(paymentId)), /forbidden/);
+    await expectDbError(remove(ADMIN, paymentId, 99), /conflict/);
+
+    const [linked] = await rpc<{ id: string }>(ADMIN, `select * from public.upsert_expense($1)`, [
+      JSON.stringify({ household_id: ids.householdId, period_id: periodId, section_id: ids.sections.BILLS, title: "Water", amount: "900", split_rule_id: ids.rules.POOL3, paid_by_unit_id: ids.units.AB }),
+    ]);
+    const [{ id: auto }] = (await db.query<{ id: string }>(`select id from public.payments where related_expense_id = $1`, [linked.id])).rows;
+    await expectDbError(remove(ADMIN, auto, await version(auto)), /linked_to_expense/);
+
+    await rpc(ADMIN, `select public.set_period_status($1, 'closed')`, [periodId]);
+    await expectDbError(remove(ADMIN, paymentId, await version(paymentId)), /period_closed/);
+    await rpc(ADMIN, `select public.set_period_status($1, 'open')`, [periodId]);
+
+    await db.query(`delete from public.sync_jobs`);
+    const files = await remove(ADMIN, paymentId, await version(paymentId));
+    expect(files).toEqual([{ path: `${ids.householdId}/${AK_USER.sub}/ak.png` }]);
+    expect((await db.query(`select 1 from public.payments where id = $1`, [paymentId])).rows).toEqual([]);
+    expect((await db.query(`select action from public.audit_log where table_name = 'payments' and record_id = $1 and upper(action::text) = 'DELETE'`, [paymentId])).rows).toHaveLength(1);
+    expect((await db.query(`select scope from public.sync_jobs where status = 'pending'`)).rows).toEqual([{ scope: `period:${periodId}` }]);
+  });
 });
 
 describe("sync worker", () => {

@@ -16,6 +16,7 @@ const DB_MESSAGES: Record<string, string> = {
   reason_required: "Give a reason when rejecting a payment.",
   invalid_split: "The split is not valid.",
   invalid_expense: "The expense is not valid.",
+  linked_to_expense: "This payment was made for an expense. Change it on the expense instead.",
   rule_in_closed_period: "This rule is used by a closed month. Create a new rule instead.",
 };
 
