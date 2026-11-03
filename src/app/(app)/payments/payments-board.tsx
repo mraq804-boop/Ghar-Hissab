@@ -253,6 +253,12 @@ export function PaymentsBoard(p: Props) {
       </Button>
 
       <ResponsiveDialog open={creating} onOpenChange={setCreating} title="Record a payment" description="Money handed to the purse-holder">
+        {creating && p.admin ? (
+          <p className="mb-4 rounded-lg bg-info-soft px-3 py-2 text-sm text-info">
+            Paying a bill from the purse?{" "}
+            <Link href="/expenses?new=1" className="font-medium underline underline-offset-2">Add it as an expense</Link> instead. Record payment is only for money put into the purse.
+          </p>
+        ) : null}
         {creating ? (
           <PaymentForm
             householdId={p.householdId}
