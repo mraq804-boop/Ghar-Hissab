@@ -86,6 +86,7 @@ async function Expenses({ searchParams }: { searchParams: PageProps<"/expenses">
       shares: input.amountPaisa === null || spec.type === "none" ? [] : allocateExpense(input, units, input.amountPaisa % 100n === 0n ? 100n : 1n).map((s) => ({ code: code(s.unitId), sharePaisa: s.sharePaisa })),
       paidByUnitId: e.paid_by_unit_id,
       paidByCode: e.paid_by_unit_id ? code(e.paid_by_unit_id) : null,
+      paidFromOwn: e.paid_from_own,
       notes: e.notes,
       expenseDate: e.expense_date,
       sync: admin ? recordStatus(e.updated_at, scopeState, connected) : null,

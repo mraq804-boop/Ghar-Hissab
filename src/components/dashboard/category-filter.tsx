@@ -54,7 +54,6 @@ export function CategoryFilter({ categories, selectedIds, group }: { categories:
   return (
     <div className={cn("flex flex-wrap items-center gap-2", pending && "opacity-70")}>
       {chip("All", selectedIds === null, () => go({}))}
-      {KINDS.map((k) => chip(KIND_LABEL[k], group === k, () => go({ group: k })))}
       <Button
         variant="outline"
         size="sm"

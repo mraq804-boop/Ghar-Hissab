@@ -46,6 +46,7 @@ export const expenseInputSchema = z
     amount: z.string().optional().default(""),
     expenseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).optional().default(""),
     paidByUnitId: z.uuid(),
+    paidFromOwn: z.boolean().optional().default(false),
     notes: z.string().trim().max(1000).optional().default(""),
     split: splitInputSchema,
   })

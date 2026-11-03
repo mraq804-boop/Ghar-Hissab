@@ -53,6 +53,7 @@ export type ExpenseRow = {
   split_override: Parameters<typeof overrideToSpec>[0] | null;
   expense_date: string | null;
   paid_by_unit_id: string | null;
+  paid_from_own: boolean;
   receipt_path: string | null;
   notes: string | null;
   sort_order: number;
@@ -135,7 +136,7 @@ export function toExpenseInput(e: ExpenseRow, rules: Rule[], sections: Section[]
 }
 
 const EXPENSE_COLUMNS =
-  "id, period_id, section_id, category_id, title, description, qty_text, qty_num, rate, amount, split_rule_id, split_override, expense_date, paid_by_unit_id, receipt_path, notes, sort_order, version, source, updated_at, created_at";
+  "id, period_id, section_id, category_id, title, description, qty_text, qty_num, rate, amount, split_rule_id, split_override, expense_date, paid_by_unit_id, paid_from_own, receipt_path, notes, sort_order, version, source, updated_at, created_at";
 
 const PAYMENT_COLUMNS =
   "id, period_id, payer_unit_id, payer_member_id, recipient_unit_id, amount, paid_on, method, reference, related_expense_id, notes, status, source, version, created_at, updated_at, submitted_by, payment_attachments(id, storage_path, mime_type, size_bytes, sha256), payment_reviews(decision, reason, created_at, reviewer_id)";

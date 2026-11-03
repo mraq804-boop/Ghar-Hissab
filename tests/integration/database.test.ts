@@ -190,6 +190,45 @@ describe("expenses", () => {
     expect((await linked(row.id)).rows).toEqual([]);
   });
 
+  it("the purse-holder paying from their own pocket counts as their payment; paying from the purse does not", async () => {
+    const base = { household_id: ids.householdId, period_id: periodId, section_id: ids.sections.BILLS, title: "Gas", split_rule_id: ids.rules.POOL3, paid_by_unit_id: ids.units.AQ };
+    const linked = async (id: string) =>
+      (
+        await db.query<{ amount: string; payer: string; recipient: string }>(
+          `select p.amount::text, pu.code as payer, ru.code as recipient from public.payments p
+           join public.units pu on pu.id = p.payer_unit_id join public.units ru on ru.id = p.recipient_unit_id
+           where p.related_expense_id = $1 and p.auto_from_expense`,
+          [id],
+        )
+      ).rows;
+    const own = async (id: string) => (await db.query<{ own: boolean }>(`select paid_from_own as own from public.expenses where id = $1`, [id])).rows[0].own;
+
+    const [row] = await rpc<{ id: string; version: number }>(ADMIN, `select * from public.upsert_expense($1)`, [JSON.stringify({ ...base, amount: "6000" })]);
+    expect(await linked(row.id)).toEqual([]);
+
+    const [v2] = await rpc<{ id: string; version: number }>(ADMIN, `select * from public.upsert_expense($1)`, [
+      JSON.stringify({ ...base, id: row.id, expected_version: row.version, amount: "6000", paid_from_own: true }),
+    ]);
+    expect(await linked(row.id)).toEqual([{ amount: "6000.00", payer: "AQ", recipient: "AQ" }]);
+
+    const [v3] = await rpc<{ id: string; version: number }>(ADMIN, `select * from public.upsert_expense($1)`, [
+      JSON.stringify({ ...base, id: row.id, expected_version: v2.version, amount: "6500" }),
+    ]);
+    expect(await own(row.id)).toBe(true);
+    expect(await linked(row.id)).toEqual([{ amount: "6500.00", payer: "AQ", recipient: "AQ" }]);
+
+    const [v4] = await rpc<{ id: string; version: number }>(ADMIN, `select * from public.upsert_expense($1)`, [
+      JSON.stringify({ ...base, id: row.id, expected_version: v3.version, amount: "6500", paid_by_unit_id: ids.units.AB, paid_from_own: true }),
+    ]);
+    expect(await own(row.id)).toBe(false);
+    expect(await linked(row.id)).toEqual([{ amount: "6500.00", payer: "AB", recipient: "AQ" }]);
+
+    await rpc(ADMIN, `select * from public.upsert_expense($1)`, [
+      JSON.stringify({ ...base, id: row.id, expected_version: v4.version, amount: "6500", paid_from_own: false }),
+    ]);
+    expect(await linked(row.id)).toEqual([]);
+  });
+
   it("members cannot trigger direct-payment syncing themselves", async () => {
     await expectDbError(rpc(AK_USER, `select public.sync_direct_payment($1)`, [periodId]), /permission denied/);
   });

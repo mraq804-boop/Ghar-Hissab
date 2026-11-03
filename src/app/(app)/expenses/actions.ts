@@ -54,6 +54,7 @@ export async function saveExpense(input: ExpenseInputForm): Promise<ActionResult
     split_override: override,
     expense_date: v.expenseDate,
     paid_by_unit_id: v.paidByUnitId,
+    paid_from_own: v.paidFromOwn,
     notes: v.notes,
   };
 

@@ -62,6 +62,18 @@ describe("buildChatContext", () => {
     expect(text).toContain("AK | Rs 19,000 | 2026-10-31 | JazzCash | approved");
   });
 
+  it("totals what was collected into the purse and what is left after spending", () => {
+    const month: ChatMonth = { ...october, payments: [...october.payments, { payer: "AK", amountPaisa: rs(1000), paidOn: "2026-11-01", method: "Cash", status: "pending" }] };
+    const text = buildChatContext({ ...base, months: [month], scope: { seeExpenses: true, seeAllBalances: true, ownUnit: "AQ" } });
+    expect(text).toContain("Collected into the purse (approved payments only): Rs 46,900 = AQ Rs 27,900 + AK Rs 19,000.");
+    expect(text).toContain("Waiting for approval, not counted yet: AK Rs 1,000.");
+    expect(text).toContain("Left in the purse after this month's shared spending (all households' balances added up): −Rs 13,059.");
+
+    const member = buildChatContext({ ...base, months: [month], scope: { seeExpenses: false, seeAllBalances: false, ownUnit: "AK" } });
+    expect(member).toContain("Collected into the purse from your household (approved payments only): Rs 19,000 = AK Rs 19,000.");
+    expect(member).not.toContain("Left in the purse");
+  });
+
   it("leaves out other households and expense lines when a member may not see them", () => {
     const text = buildChatContext({ ...base, scope: { seeExpenses: false, seeAllBalances: false, ownUnit: "AK" } });
     expect(text).toContain("AK: share");

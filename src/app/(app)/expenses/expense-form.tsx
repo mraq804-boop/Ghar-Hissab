@@ -81,6 +81,7 @@ export function ExpenseForm({
       amount: "",
       expenseDate: "",
       paidByUnitId: purse?.id ?? "",
+      paidFromOwn: false,
       notes: "",
       splitMode: "rule",
       ruleId: defaultRule?.id ?? "",
@@ -154,6 +155,7 @@ export function ExpenseForm({
       amount: values.amount,
       expenseDate: values.expenseDate,
       paidByUnitId: values.paidByUnitId,
+      paidFromOwn: values.paidByUnitId === purse?.id && !!values.paidFromOwn,
       notes: values.notes,
       split: toSplit(values),
     };
@@ -387,17 +389,33 @@ export function ExpenseForm({
       </fieldset>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Paid by" htmlFor="paidByUnitId" hint="If not the purse-holder, a payment from that household is sent to Payments for you to approve.">
+        <Field
+          label="Paid by"
+          htmlFor="paidByUnitId"
+          hint={`Paid from the purse adds no payment. Anyone else, or ${purse?.code ?? "the purse-holder"} from their own pocket, gets a payment sent to Payments for you to approve.`}
+        >
           <Controller
             control={control}
             name="paidByUnitId"
             render={({ field }) => (
-              <Select value={field.value} onValueChange={field.onChange}>
+              <Select
+                value={v.paidFromOwn && field.value === purse?.id ? `${field.value}:own` : field.value}
+                onValueChange={(value) => {
+                  const [id, own] = value.split(":");
+                  field.onChange(id);
+                  setValue("paidFromOwn", own === "own");
+                }}
+              >
                 <SelectTrigger id="paidByUnitId" className="h-10 w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {refData.units.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>{u.code}{u.is_purse_holder ? " (purse-holder)" : ""}</SelectItem>
-                  ))}
+                  {refData.units.flatMap((u) =>
+                    u.is_purse_holder
+                      ? [
+                          <SelectItem key={u.id} value={u.id}>{u.code} (from the purse)</SelectItem>,
+                          <SelectItem key={`${u.id}:own`} value={`${u.id}:own`}>{u.code} (own pocket)</SelectItem>,
+                        ]
+                      : [<SelectItem key={u.id} value={u.id}>{u.code}</SelectItem>],
+                  )}
                 </SelectContent>
               </Select>
             )}

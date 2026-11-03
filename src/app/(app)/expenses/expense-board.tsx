@@ -46,6 +46,7 @@ export type ExpenseView = {
   shares: { code: string; sharePaisa: bigint }[];
   paidByUnitId: string | null;
   paidByCode: string | null;
+  paidFromOwn: boolean;
   notes: string | null;
   expenseDate: string | null;
   sync: "synced" | "pending" | "failed" | "off" | null;
@@ -314,7 +315,7 @@ function Allocation({ e, mobile }: { e: ExpenseView; mobile?: boolean }) {
               <dd><Money paisa={s.sharePaisa} decimals={s.sharePaisa % 100n !== 0n} /></dd>
             </div>
           ))}
-          {e.paidByCode ? <div className="text-muted-foreground">Paid by {e.paidByCode}</div> : null}
+          {e.paidByCode ? <div className="text-muted-foreground">Paid by {e.paidByCode}{e.paidFromOwn ? " (own pocket)" : ""}</div> : null}
           {e.expenseDate ? <div className="text-muted-foreground">{new Date(e.expenseDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</div> : null}
         </dl>
       )}
@@ -392,6 +393,7 @@ function toInitial(e: ExpenseView) {
     amount: e.amount ? String(Number(e.amount)) : "",
     expenseDate: e.expenseDate ?? "",
     paidByUnitId: e.paidByUnitId ?? undefined,
+    paidFromOwn: e.paidFromOwn,
     notes: e.notes ?? "",
     splitMode: (o ? (o.type === "weights" ? "rule" : o.type) : "rule") as "rule" | "equal_units" | "percentage" | "custom_amounts",
     ruleId: e.splitRuleId ?? "",

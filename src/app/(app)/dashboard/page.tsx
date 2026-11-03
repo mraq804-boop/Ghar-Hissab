@@ -20,7 +20,6 @@ import { publicEnv } from "@/lib/env";
 import { buildMonthSummary } from "@/lib/smart/summary";
 import { ShareSummary } from "@/components/ledger/share-summary";
 import { CategoryFilter } from "@/components/dashboard/category-filter";
-import { KIND_LABEL } from "@/lib/dashboard/filter";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -65,17 +64,6 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
   const billsDue = d.billNotices.filter((b) => b.kind === "due").length + s.pendingBillCount;
   const owing = s.units.filter((u) => u.balancePaisa < 0n).length;
   const previousName = d.previousPeriod ? periodLabel(d.previousPeriod) : null;
-  const groupHref = (group?: string) => {
-    const q = new URLSearchParams();
-    for (const k of ["m", "unit"] as const) {
-      const v = one(sp[k]);
-      if (v) q.set(k, v);
-    }
-    if (group) q.set("group", group);
-    return `/dashboard${q.size ? `?${q}` : ""}`;
-  };
-  const kindSum = d.kinds.essential + d.kinds.variable;
-  const kindPct = (v: bigint) => (kindSum > 0n ? Math.round((paisaToNumber(v) / paisaToNumber(kindSum)) * 100) : 0);
   const summary = d.seeAll
     ? buildMonthSummary({
         monthLabel: periodLabel(d.period, true),
@@ -161,54 +149,6 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
             note={s.pendingBillCount ? `${s.pendingBillCount} not issued yet` : billsDue ? "See Needs attention" : "Nothing waiting"}
           />
         </div>
-
-        {kindSum > 0n ? (
-          <div className="rounded-2xl border bg-card p-4 sm:p-5">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="font-heading text-lg font-semibold">Must-pay vs daily food</h2>
-              <p className="text-xs text-muted-foreground">Tap a side to see only those categories</p>
-            </div>
-            <div className="mt-3 flex h-4 overflow-hidden rounded-full bg-muted" aria-hidden>
-              <div className="h-full bg-chart-1" style={{ width: `${kindPct(d.kinds.essential)}%` }} />
-              <div className="h-full bg-chart-3" style={{ width: `${kindPct(d.kinds.variable)}%` }} />
-            </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              {(["essential", "variable"] as const).map((k) => (
-                <Link
-                  key={k}
-                  href={d.selection.group === k ? groupHref() : groupHref(k)}
-                  scroll={false}
-                  aria-current={d.selection.group === k ? "true" : undefined}
-                  className={cn("flex items-center gap-3 rounded-xl border px-3 py-2.5 hover:bg-muted/50", d.selection.group === k && "border-primary bg-accent/40")}
-                >
-                  <span className={cn("size-3 shrink-0 rounded-full", k === "essential" ? "bg-chart-1" : "bg-chart-3")} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium">
-                      {KIND_LABEL[k]} <span className="text-muted-foreground">· {kindPct(d.kinds[k])}%</span>
-                    </span>
-                    <span className="block text-xs text-muted-foreground">{k === "essential" ? "Bills, groceries, maid, household" : "Milk, sabzi, chicken & meat"}</span>
-                  </span>
-                  <span className="text-right">
-                    <span className="num block text-sm font-semibold">{formatPaisa(d.kinds[k])}</span>
-                    <span className="block text-xs">
-                      <ChangeNote value={d.previousKinds ? pctChange(d.kinds[k], d.previousKinds[k]) : null} previous={previousName} />
-                    </span>
-                  </span>
-                </Link>
-              ))}
-            </div>
-            {d.variableChanges.length ? (
-              <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                <TrendingUp className="size-3.5 text-warning" /> Went up:
-                {d.variableChanges.map((v) => (
-                  <span key={v.name}>
-                    <span className="font-medium text-foreground">{v.name}</span> +<span className="num">{formatPaisa(v.now - v.before!)}</span>
-                  </span>
-                ))}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
 
         <div className={cn("-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 md:mx-0 md:grid md:overflow-visible md:px-0 md:pb-0", d.visibleUnits.length > 1 ? "md:grid-cols-3" : "md:grid-cols-1")}>
           {d.visibleUnits.map((u) => {
