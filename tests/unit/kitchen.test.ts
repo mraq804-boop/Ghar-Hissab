@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { daysOfMonth, generateRoster, mealCounts, menuWeek, menuWeekday, weekOf } from "@/lib/kitchen";
+import { daysOfMonth, generateRoster, mealCounts, menuWeek, menuWeekday, weekOf, weeksOfMonth } from "@/lib/kitchen";
 import { text } from "@/server/excel/layout";
 
 describe("duty roster generator", () => {
@@ -57,6 +57,20 @@ describe("printable week", () => {
 
   it("uses menu week 1 for days 1-7, 2 for 8-14, 3 for 15-21 and 4 from the 22nd", () => {
     expect(["2026-11-01", "2026-11-07", "2026-11-08", "2026-11-14", "2026-11-15", "2026-11-21", "2026-11-22", "2026-11-30"].map(menuWeek)).toEqual([1, 1, 2, 2, 3, 3, 4, 4]);
+  });
+
+  it("splits a month into full Monday-to-Sunday weeks", () => {
+    const nov = weeksOfMonth(2026, 11);
+    expect(nov.map((w) => [w[0], w[6]])).toEqual([
+      ["2026-10-26", "2026-11-01"],
+      ["2026-11-02", "2026-11-08"],
+      ["2026-11-09", "2026-11-15"],
+      ["2026-11-16", "2026-11-22"],
+      ["2026-11-23", "2026-11-29"],
+      ["2026-11-30", "2026-12-06"],
+    ]);
+    expect(nov.every((w) => w.length === 7)).toBe(true);
+    expect(weeksOfMonth(2027, 2)).toHaveLength(4);
   });
 
   it("numbers weekdays Monday 1 to Sunday 7 like the menu", () => {

@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { formatKg, needsFor, shoppingList } from "@/lib/shopping";
+import { formatKg, needsFor, shoppingCategory, shoppingList } from "@/lib/shopping";
+
+describe("shoppingCategory", () => {
+  const cats = [
+    { name: "Groceries", active: true },
+    { name: "Vegetables (Sabzi)", active: true },
+    { name: "Chicken & meat", active: true },
+  ];
+  it("puts sabzi in vegetables and meat, chicken and fish in chicken & meat", () => {
+    expect(shoppingCategory("Sabzi", cats)?.name).toBe("Vegetables (Sabzi)");
+    expect(shoppingCategory("Fish", cats)?.name).toBe("Chicken & meat");
+    expect(shoppingCategory("Meat", cats)?.name).toBe("Chicken & meat");
+    expect(shoppingCategory("Chicken", [{ name: "Chicken & meat", active: false }])).toBeUndefined();
+  });
+});
 
 describe("needsFor", () => {
   it("reads meat, chicken and fish dishes", () => {

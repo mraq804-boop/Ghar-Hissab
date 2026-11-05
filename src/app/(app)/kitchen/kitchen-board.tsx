@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { flushSync } from "react-dom";
-import { ChevronLeft, ChevronRight, Loader2, Plus, Printer, Share2, ShoppingBasket, Sparkles, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Plus, Printer, Receipt, Share2, ShoppingBasket, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -13,11 +13,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Field } from "@/components/ledger/field";
 import { ResponsiveDialog } from "@/components/ledger/responsive-dialog";
-import { menuWeek, menuWeekday, weekOf } from "@/lib/kitchen";
+import { menuWeek, menuWeekday, weekOf, weeksOfMonth } from "@/lib/kitchen";
 import { MONTHS_LONG } from "@/lib/periods";
 import { BASE_PEOPLE, SHOPPING_GROUPS, formatKg, shoppingList, type ShoppingRow } from "@/lib/shopping";
 import { cn } from "@/lib/utils";
-import { addSabzi, fillRoster, removeSabzi, saveDayCategory, saveDish, saveDutyDay } from "./actions";
+import { addShoppingToExpenses, addSabzi, fillRoster, removeSabzi, saveDayCategory, saveDish, saveDutyDay } from "./actions";
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const NONE = "__none";
@@ -72,7 +72,7 @@ function MenuBoard({ admin, slots, sabzi }: { admin: boolean; slots: Slot[]; sab
 
   return (
     <div className="space-y-4">
-    <PrintWeek slot={slot} />
+    <PrintWeek slot={slot} admin={admin} />
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
       <div className="overflow-hidden rounded-2xl border bg-card">
         <div className="overflow-x-auto">
@@ -191,27 +191,93 @@ function MenuBoard({ admin, slots, sabzi }: { admin: boolean; slots: Slot[]; sab
   );
 }
 
-function PrintWeek({ slot }: { slot: (week: number, weekday: number) => Slot | undefined }) {
-  const [which, setWhich] = useState<"this" | "next">("next");
+function ShoppingToExpenses({ open, onOpenChange, list }: { open: boolean; onOpenChange: (o: boolean) => void; list: ShoppingRow[] }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const today = new Date();
+  const [date, setDate] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`);
+  const [rows, setRows] = useState(list.map((r) => ({ group: r.group, item: r.item, kg: String(r.kg), amount: "" })));
+  const priced = rows.filter((r) => r.amount.trim() && Number(r.kg) > 0);
+  const total = priced.reduce((a, r) => a + (Number(r.amount.replace(/,/g, "")) || 0), 0);
+  const set = (i: number, patch: Partial<(typeof rows)[number]>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+
+  const save = () =>
+    start(async () => {
+      const r = await addShoppingToExpenses({ date, items: priced.map((x) => ({ group: x.group, item: x.item, kg: Number(x.kg), amount: x.amount })) });
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
+      }
+      toast.success(r.message);
+      onOpenChange(false);
+      router.refresh();
+    });
+
+  return (
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange} title="Add shopping to expenses" description="Type what you paid for each item. Items left blank are skipped. Paid from the purse.">
+      <div className="space-y-4">
+        <Field label="Shopping date" htmlFor="shop-date">
+          <Input id="shop-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-10 w-44" />
+        </Field>
+        <ul className="divide-y rounded-xl border">
+          {rows.map((r, i) => (
+            <li key={`${r.group}-${r.item}`} className="flex flex-wrap items-center gap-2 px-3 py-2">
+              <span className="min-w-0 flex-1 basis-40">
+                {r.item}
+                <span className="block text-xs text-muted-foreground">{r.group}</span>
+              </span>
+              <label className="flex items-center gap-1 text-sm">
+                <Input aria-label={`${r.item} kg`} type="number" inputMode="decimal" step="0.25" min={0} value={r.kg} onChange={(e) => set(i, { kg: e.target.value })} className="h-9 w-20" />
+                kg
+              </label>
+              <label className="flex items-center gap-1 text-sm">
+                Rs
+                <Input aria-label={`${r.item} price`} inputMode="numeric" placeholder="Price" value={r.amount} onChange={(e) => set(i, { amount: e.target.value })} className="h-9 w-28" />
+              </label>
+            </li>
+          ))}
+        </ul>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm text-muted-foreground">
+            {priced.length} item{priced.length === 1 ? "" : "s"} · Rs {total.toLocaleString("en-US")}
+          </span>
+          <Button onClick={save} disabled={pending || !priced.length || !date}>
+            {pending ? <Loader2 className="animate-spin" /> : <Receipt />} Add {priced.length || ""} to expenses
+          </Button>
+        </div>
+      </div>
+    </ResponsiveDialog>
+  );
+}
+
+function PrintWeek({ slot, admin }: { slot: (week: number, weekday: number) => Slot | undefined; admin: boolean }) {
+  const [addOpen, setAddOpen] = useState(false);
+  const [which, setWhich] = useState<"this" | "next" | "month" | "nextMonth">("next");
   const [sheet, setSheet] = useState<"menu" | "list">("menu");
   const [listOpen, setListOpen] = useState(false);
   const [people, setPeople] = useState(String(BASE_PEOPLE));
-  const days = useMemo(() => {
+  const monthMode = which === "month" || which === "nextMonth";
+  const { weeks, monthTitle } = useMemo(() => {
     const now = new Date();
+    if (which === "month" || which === "nextMonth") {
+      const first = new Date(now.getFullYear(), now.getMonth() + (which === "nextMonth" ? 1 : 0), 1);
+      return { weeks: weeksOfMonth(first.getFullYear(), first.getMonth() + 1), monthTitle: `${MONTHS_LONG[first.getMonth()]} ${first.getFullYear()}` };
+    }
     if (which === "next") now.setDate(now.getDate() + 7);
     const local = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-    return weekOf(local);
+    return { weeks: [weekOf(local)], monthTitle: "" };
   }, [which]);
+  const days = weeks[0];
   const show = (day: string, opts: Intl.DateTimeFormatOptions) => new Date(`${day}T00:00:00`).toLocaleDateString("en-GB", opts);
-  const range = `${show(days[0], { day: "numeric", month: "short" })} – ${show(days[6], { day: "numeric", month: "short", year: "numeric" })}`;
+  const rangeOf = (w: string[]) => `${show(w[0], { day: "numeric", month: "short" })} – ${show(w[6], { day: "numeric", month: "short", year: "numeric" })}`;
+  const range = rangeOf(days);
   const headcount = Math.min(100, Math.max(1, Number(people) || BASE_PEOPLE));
-  const list = shoppingList(
-    days.map((day) => {
+  const mealsOf = (w: string[]) =>
+    w.map((day) => {
       const s = slot(menuWeek(day), menuWeekday(day));
       return { day, dish: s?.dish ?? "", category: s?.fixed_category ?? "" };
-    }),
-    headcount,
-  );
+    });
+  const list = shoppingList(mealsOf(days), headcount);
   const dayNames = (r: ShoppingRow) => r.days.map((d) => show(d, { weekday: "short" })).join(", ");
   const print = (target: "menu" | "list") => {
     flushSync(() => setSheet(target));
@@ -228,22 +294,26 @@ function PrintWeek({ slot }: { slot: (week: number, weekday: number) => Slot | u
   return (
     <>
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <Select value={which} onValueChange={(v) => setWhich(v as "this" | "next")}>
-          <SelectTrigger className="h-9 w-40" aria-label="Week"><SelectValue /></SelectTrigger>
+        <Select value={which} onValueChange={(v) => setWhich(v as typeof which)}>
+          <SelectTrigger className="h-9 w-40" aria-label="Week or month"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="this">This week</SelectItem>
             <SelectItem value="next">Next week</SelectItem>
+            <SelectItem value="month">This month</SelectItem>
+            <SelectItem value="nextMonth">Next month</SelectItem>
           </SelectContent>
         </Select>
-        <Button variant={listOpen ? "secondary" : "outline"} className="h-9" onClick={() => setListOpen((o) => !o)} aria-expanded={listOpen}>
-          <ShoppingBasket /> Shopping list
-        </Button>
+        {monthMode ? null : (
+          <Button variant={listOpen ? "secondary" : "outline"} className="h-9" onClick={() => setListOpen((o) => !o)} aria-expanded={listOpen}>
+            <ShoppingBasket /> Shopping list
+          </Button>
+        )}
         <Button variant="outline" className="h-9" onClick={() => print("menu")}>
-          <Printer /> Print {range}
+          <Printer /> Print {monthMode ? `${monthTitle} (${weeks.length} weeks)` : range}
         </Button>
       </div>
 
-      {listOpen ? (
+      {listOpen && !monthMode ? (
         <section className="rounded-2xl border bg-card p-4 shadow-sm" aria-label="Shopping list">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -287,10 +357,16 @@ function PrintWeek({ slot }: { slot: (week: number, weekday: number) => Slot | u
                 <Share2 /> Share on WhatsApp
               </a>
             </Button>
-            <Button className="h-9" onClick={() => print("list")} disabled={!list.length}>
+            <Button variant={admin ? "outline" : "default"} className="h-9" onClick={() => print("list")} disabled={!list.length}>
               <Printer /> Print list
             </Button>
+            {admin ? (
+              <Button className="h-9" onClick={() => setAddOpen(true)} disabled={!list.length}>
+                <Receipt /> Add to expenses
+              </Button>
+            ) : null}
           </div>
+          {admin ? <ShoppingToExpenses key={`${range}-${headcount}-${addOpen}`} open={addOpen} onOpenChange={setAddOpen} list={list} /> : null}
         </section>
       ) : null}
 
@@ -322,32 +398,51 @@ function PrintWeek({ slot }: { slot: (week: number, weekday: number) => Slot | u
       </div>
 
       <div data-print-sheet={sheet === "menu" ? "" : undefined} className={cn("hidden", sheet === "menu" && "print:block")}>
-        <h1 className="text-2xl font-bold">Weekly kitchen menu</h1>
-        <p className="mt-1 text-base">{range}</p>
-        <table className="mt-5 w-full border-collapse text-lg">
-          <thead>
-            <tr className="text-left text-sm">
-              <th className="border border-black px-3 py-2">Day</th>
-              <th className="border border-black px-3 py-2">Date</th>
-              <th className="border border-black px-3 py-2">Dish</th>
-            </tr>
-          </thead>
-          <tbody>
-            {days.map((day) => {
-              const s = slot(menuWeek(day), menuWeekday(day));
-              return (
-                <tr key={day}>
-                  <td className="border border-black px-3 py-3 font-semibold">{show(day, { weekday: "long" })}</td>
-                  <td className="border border-black px-3 py-3 whitespace-nowrap">{show(day, { day: "numeric", month: "short" })}</td>
-                  <td className="border border-black px-3 py-3">
-                    {s?.dish || "—"}
-                    {s?.fixed_category ? <span className="ml-2 text-sm">({s.fixed_category})</span> : null}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <h1 className="text-2xl font-bold">{monthMode ? `Kitchen menu · ${monthTitle}` : "Weekly kitchen menu"}</h1>
+        <p className="mt-1 text-base">{monthMode ? `${weeks.length} weeks of 7 days, Monday to Sunday · buy on the Sunday before each week (${headcount} people)` : range}</p>
+        {weeks.map((w, i) => {
+          const buy = monthMode ? shoppingList(mealsOf(w), headcount) : [];
+          return (
+            <section key={w[0]} className={cn("break-inside-avoid", monthMode ? "mt-4" : "mt-5")}>
+              {monthMode ? (
+                <h2 className="text-base font-bold">
+                  Week {i + 1} · {rangeOf(w)}
+                </h2>
+              ) : null}
+              <table className={cn("w-full border-collapse", monthMode ? "mt-1 text-sm" : "text-lg")}>
+                <thead>
+                  <tr className="text-left text-sm">
+                    <th className={cn("border border-black px-3", monthMode ? "w-28 py-1" : "py-2")}>Day</th>
+                    <th className={cn("border border-black px-3", monthMode ? "w-20 py-1" : "py-2")}>Date</th>
+                    <th className={cn("border border-black px-3", monthMode ? "py-1" : "py-2")}>Dish</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {w.map((day) => {
+                    const s = slot(menuWeek(day), menuWeekday(day));
+                    const cell = cn("border border-black px-3", monthMode ? "py-1" : "py-3");
+                    return (
+                      <tr key={day}>
+                        <td className={cn(cell, "font-semibold")}>{show(day, { weekday: "long" })}</td>
+                        <td className={cn(cell, "whitespace-nowrap")}>{show(day, { day: "numeric", month: "short" })}</td>
+                        <td className={cell}>
+                          {s?.dish || "—"}
+                          {s?.fixed_category ? <span className="ml-2 text-xs">({s.fixed_category})</span> : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {buy.length ? (
+                <p className="mt-1 text-xs">
+                  <span className="font-semibold">Buy: </span>
+                  {buy.map((r) => `${r.item} ${formatKg(r.kg)}`).join(" · ")}
+                </p>
+              ) : null}
+            </section>
+          );
+        })}
       </div>
     </>
   );

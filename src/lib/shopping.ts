@@ -48,4 +48,10 @@ export function shoppingList(meals: { day: string; dish: string; category: strin
     .sort((a, b) => SHOPPING_GROUPS.indexOf(a.group) - SHOPPING_GROUPS.indexOf(b.group) || b.kg - a.kg);
 }
 
+/** The daily-food expense category a shopping group belongs to: sabzi to Vegetables, the rest to Chicken & meat. */
+export function shoppingCategory<C extends { name: string; active: boolean }>(group: ShoppingGroup, categories: C[]): C | undefined {
+  const pattern = group === "Sabzi" ? /sabzi|vegetable/i : /meat|chicken|fish/i;
+  return categories.find((c) => c.active && pattern.test(c.name));
+}
+
 export const formatKg = (kg: number) => `${Number.isInteger(kg) ? kg : kg.toFixed(2).replace(/0$/, "")} kg`;

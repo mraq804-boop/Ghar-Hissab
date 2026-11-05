@@ -20,6 +20,14 @@ export function weekOf(day: string): string[] {
   return Array.from({ length: 7 }, (_, i) => iso(new Date(d.getTime() + i * 86_400_000)));
 }
 
+/** The Monday-to-Sunday weeks that cover a month, so every week has all 7 days. */
+export function weeksOfMonth(year: number, month: number): string[][] {
+  const days = daysOfMonth(year, month);
+  const weeks: string[][] = [];
+  for (let w = weekOf(days[0]); w[0] <= days[days.length - 1]; w = weekOf(iso(new Date(Date.parse(`${w[6]}T00:00:00Z`) + 86_400_000)))) weeks.push(w);
+  return weeks;
+}
+
 /** Which of the 4 menu weeks a date falls in: days 1-7 are week 1, 8-14 week 2, 15-21 week 3, the rest week 4. */
 export function menuWeek(day: string): number {
   return Math.min(4, Math.ceil(Number(day.slice(8, 10)) / 7));

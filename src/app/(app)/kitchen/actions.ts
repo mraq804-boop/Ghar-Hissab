@@ -3,9 +3,81 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { daysOfMonth, generateRoster } from "@/lib/kitchen";
+import { MONTHS_LONG } from "@/lib/periods";
+import { SHOPPING_GROUPS, formatKg, shoppingCategory } from "@/lib/shopping";
+import { moneyString } from "@/lib/validation/expense";
 import { getContext, isAdmin } from "@/server/auth";
+import { getReference } from "@/server/data/ledger";
 import { dbError, forbidden, invalid, type ActionResult } from "@/server/actions/result";
 import { kickSync } from "@/server/excel/kick";
+
+const shoppingSchema = z.object({
+  date: z.iso.date("Choose the shopping date."),
+  items: z
+    .array(
+      z.object({
+        group: z.enum(SHOPPING_GROUPS),
+        item: z.string().trim().min(1).max(80),
+        kg: z.number().positive().max(1000),
+        amount: moneyString,
+      }),
+    )
+    .min(1, "Enter the price of at least one item.")
+    .max(30),
+});
+
+export async function addShoppingToExpenses(input: z.input<typeof shoppingSchema>): Promise<ActionResult<{ count: number }>> {
+  const ctx = await getContext();
+  if (!isAdmin(ctx)) return forbidden;
+  const p = shoppingSchema.safeParse(input);
+  if (!p.success) return invalid(p.error);
+
+  const ref = await getReference();
+  const [year, month] = p.data.date.split("-").map(Number);
+  const period = ref.periods.find((x) => x.year === year && x.month === month);
+  if (!period) return { ok: false, error: `Start ${MONTHS_LONG[month - 1]} ${year} in Expenses first.` };
+  if (period.status === "closed") return { ok: false, error: `${MONTHS_LONG[month - 1]} ${year} is closed. Reopen it first.` };
+  const purse = ref.units.find((u) => u.is_purse_holder) ?? ref.units[0];
+
+  const payloads = [];
+  for (const it of p.data.items) {
+    const category = shoppingCategory(it.group, ref.categories);
+    if (!category) return { ok: false, error: `There is no ${it.group === "Sabzi" ? "vegetables" : "chicken & meat"} category in Expenses.` };
+    if (!category.default_split_rule_id) return { ok: false, error: `"${category.name}" has no default split. Add one expense in it by hand first.` };
+    payloads.push({
+      household_id: ctx.householdId,
+      period_id: period.id,
+      section_id: category.section_id,
+      category_id: category.id,
+      title: it.item,
+      description: "",
+      qty_text: formatKg(it.kg),
+      qty_num: "",
+      rate: "",
+      amount: it.amount,
+      split_rule_id: category.default_split_rule_id,
+      split_override: null,
+      expense_date: p.data.date,
+      paid_by_unit_id: purse.id,
+      notes: "Weekly shopping list",
+    });
+  }
+
+  let count = 0;
+  for (const payload of payloads) {
+    const { error } = await ctx.supabase.rpc("upsert_expense", { p: payload });
+    if (error) {
+      if (count) revalidatePath("/", "layout");
+      const r = dbError(error);
+      return count && !r.ok ? { ...r, error: `${count} added, then: ${r.error}` } : r;
+    }
+    count++;
+  }
+
+  revalidatePath("/", "layout");
+  kickSync();
+  return { ok: true, data: { count }, message: `${count} item${count === 1 ? "" : "s"} added to ${MONTHS_LONG[month - 1]} expenses` };
+}
 
 const slotSchema = z.object({
   week: z.number().int().min(1).max(4),
