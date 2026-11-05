@@ -3,7 +3,8 @@
 import { useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Loader2, Plus, Printer, Sparkles, X } from "lucide-react";
+import { flushSync } from "react-dom";
+import { ChevronLeft, ChevronRight, Loader2, Plus, Printer, Share2, ShoppingBasket, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,7 @@ import { Field } from "@/components/ledger/field";
 import { ResponsiveDialog } from "@/components/ledger/responsive-dialog";
 import { menuWeek, menuWeekday, weekOf } from "@/lib/kitchen";
 import { MONTHS_LONG } from "@/lib/periods";
+import { BASE_PEOPLE, SHOPPING_GROUPS, formatKg, shoppingList, type ShoppingRow } from "@/lib/shopping";
 import { cn } from "@/lib/utils";
 import { addSabzi, fillRoster, removeSabzi, saveDayCategory, saveDish, saveDutyDay } from "./actions";
 
@@ -190,7 +192,10 @@ function MenuBoard({ admin, slots, sabzi }: { admin: boolean; slots: Slot[]; sab
 }
 
 function PrintWeek({ slot }: { slot: (week: number, weekday: number) => Slot | undefined }) {
-  const [which, setWhich] = useState<"this" | "next">("this");
+  const [which, setWhich] = useState<"this" | "next">("next");
+  const [sheet, setSheet] = useState<"menu" | "list">("menu");
+  const [listOpen, setListOpen] = useState(false);
+  const [people, setPeople] = useState(String(BASE_PEOPLE));
   const days = useMemo(() => {
     const now = new Date();
     if (which === "next") now.setDate(now.getDate() + 7);
@@ -199,23 +204,124 @@ function PrintWeek({ slot }: { slot: (week: number, weekday: number) => Slot | u
   }, [which]);
   const show = (day: string, opts: Intl.DateTimeFormatOptions) => new Date(`${day}T00:00:00`).toLocaleDateString("en-GB", opts);
   const range = `${show(days[0], { day: "numeric", month: "short" })} – ${show(days[6], { day: "numeric", month: "short", year: "numeric" })}`;
+  const headcount = Math.min(100, Math.max(1, Number(people) || BASE_PEOPLE));
+  const list = shoppingList(
+    days.map((day) => {
+      const s = slot(menuWeek(day), menuWeekday(day));
+      return { day, dish: s?.dish ?? "", category: s?.fixed_category ?? "" };
+    }),
+    headcount,
+  );
+  const dayNames = (r: ShoppingRow) => r.days.map((d) => show(d, { weekday: "short" })).join(", ");
+  const print = (target: "menu" | "list") => {
+    flushSync(() => setSheet(target));
+    window.print();
+  };
+  const shareText = [
+    `*Shopping list ${range}* (${headcount} people)`,
+    ...SHOPPING_GROUPS.flatMap((g) => {
+      const rows = list.filter((r) => r.group === g);
+      return rows.length ? ["", `*${g}*`, ...rows.map((r) => `• ${r.item}: ${formatKg(r.kg)} (${dayNames(r)})`)] : [];
+    }),
+  ].join("\n");
 
   return (
     <>
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Select value={which} onValueChange={(v) => setWhich(v as "this" | "next")}>
-          <SelectTrigger className="h-9 w-40" aria-label="Week to print"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-9 w-40" aria-label="Week"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="this">This week</SelectItem>
             <SelectItem value="next">Next week</SelectItem>
           </SelectContent>
         </Select>
-        <Button variant="outline" className="h-9" onClick={() => window.print()}>
+        <Button variant={listOpen ? "secondary" : "outline"} className="h-9" onClick={() => setListOpen((o) => !o)} aria-expanded={listOpen}>
+          <ShoppingBasket /> Shopping list
+        </Button>
+        <Button variant="outline" className="h-9" onClick={() => print("menu")}>
           <Printer /> Print {range}
         </Button>
       </div>
 
-      <div data-print-sheet className="hidden print:block">
+      {listOpen ? (
+        <section className="rounded-2xl border bg-card p-4 shadow-sm" aria-label="Shopping list">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Sunday shopping · {range}</h2>
+              <p className="text-sm text-muted-foreground">Meat, chicken, fish and sabzi for this menu. Quantities are a guide, rounded to ¼ kg.</p>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              People
+              <Input type="number" inputMode="numeric" min={1} max={100} value={people} onChange={(e) => setPeople(e.target.value)} className="h-9 w-20" />
+            </label>
+          </div>
+          {list.length ? (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              {SHOPPING_GROUPS.map((g) => {
+                const rows = list.filter((r) => r.group === g);
+                if (!rows.length) return null;
+                return (
+                  <div key={g}>
+                    <h3 className="text-sm font-medium text-muted-foreground">{g}</h3>
+                    <ul className="mt-1 divide-y rounded-xl border">
+                      {rows.map((r) => (
+                        <li key={r.item} className="flex items-baseline justify-between gap-3 px-3 py-2">
+                          <span>
+                            {r.item}
+                            <span className="block text-xs text-muted-foreground">{dayNames(r)}</span>
+                          </span>
+                          <span className="font-semibold tabular-nums whitespace-nowrap">{formatKg(r.kg)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-muted-foreground">No meat, fish or sabzi dishes on the menu this week.</p>
+          )}
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <Button variant="outline" className="h-9" asChild>
+              <a href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noreferrer">
+                <Share2 /> Share on WhatsApp
+              </a>
+            </Button>
+            <Button className="h-9" onClick={() => print("list")} disabled={!list.length}>
+              <Printer /> Print list
+            </Button>
+          </div>
+        </section>
+      ) : null}
+
+      <div data-print-sheet={sheet === "list" ? "" : undefined} className={cn("hidden", sheet === "list" && "print:block")}>
+        <h1 className="text-2xl font-bold">Sunday shopping list</h1>
+        <p className="mt-1 text-base">{range} · {headcount} people</p>
+        <table className="mt-5 w-full border-collapse text-lg">
+          <thead>
+            <tr className="text-left text-sm">
+              <th className="border border-black px-3 py-2">Item</th>
+              <th className="border border-black px-3 py-2">Quantity</th>
+              <th className="border border-black px-3 py-2">For</th>
+              <th className="border border-black px-3 py-2">Bought</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((r) => (
+              <tr key={`${r.group}-${r.item}`}>
+                <td className="border border-black px-3 py-3">
+                  <span className="font-semibold">{r.item}</span> <span className="text-sm">({r.group})</span>
+                </td>
+                <td className="border border-black px-3 py-3 whitespace-nowrap font-semibold">{formatKg(r.kg)}</td>
+                <td className="border border-black px-3 py-3 text-sm">{dayNames(r)}</td>
+                <td className="w-20 border border-black px-3 py-3"></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div data-print-sheet={sheet === "menu" ? "" : undefined} className={cn("hidden", sheet === "menu" && "print:block")}>
         <h1 className="text-2xl font-bold">Weekly kitchen menu</h1>
         <p className="mt-1 text-base">{range}</p>
         <table className="mt-5 w-full border-collapse text-lg">
