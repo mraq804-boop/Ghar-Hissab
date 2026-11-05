@@ -1,4 +1,5 @@
 import "server-only";
+import { billPaid, type BillExpense } from "@/lib/utilities/bill-paid";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatPaisa } from "@/lib/finance/money";
 import { MONTHS_LONG } from "@/lib/periods";
@@ -60,13 +61,13 @@ export async function runScheduled(db: SupabaseClient, now = new Date()) {
       const soon = new Date(Date.parse(`${local.date}T00:00:00Z`) + 2 * 86_400_000).toISOString().slice(0, 10);
       const { data: bills } = await db
         .from("utility_bills")
-        .select("id, due_date, payable, late_payments, utility_meters(label, provider)")
+        .select("id, due_date, payable, late_payments, utility_meters(label, provider), expenses(expense_date, receipt_path, deleted_at)")
         .eq("household_id", householdId)
         .gte("due_date", local.date)
         .lte("due_date", soon);
       for (const b of bills ?? []) {
         const days = daysBetween(local.date, b.due_date as string);
-        if (days !== 0 && days !== 2) continue;
+        if ((days !== 0 && days !== 2) || billPaid(b.expenses as unknown as BillExpense)) continue;
         const meter = b.utility_meters as unknown as { label: string; provider: string } | null;
         const company = meter && isProvider(meter.provider) ? PROVIDERS[meter.provider].name : "";
         const late = ((b.late_payments ?? []) as { amount: number }[])[0];

@@ -87,6 +87,7 @@ async function Expenses({ searchParams }: { searchParams: PageProps<"/expenses">
       paidByUnitId: e.paid_by_unit_id,
       paidByCode: e.paid_by_unit_id ? code(e.paid_by_unit_id) : null,
       paidFromOwn: e.paid_from_own,
+      hasReceipt: Boolean(e.receipt_path),
       notes: e.notes,
       expenseDate: e.expense_date,
       sync: admin ? recordStatus(e.updated_at, scopeState, connected) : null,
@@ -103,6 +104,7 @@ async function Expenses({ searchParams }: { searchParams: PageProps<"/expenses">
       grandTotal={ledger.settlement.grandTotal}
       splitTotal={ledger.settlement.splitTotal}
       refData={{
+        householdId: ctx.householdId,
         units: ref.units.map((u) => ({ id: u.id, code: u.code, sort_order: u.sort_order, is_purse_holder: u.is_purse_holder })),
         sections: ref.sections.map((s) => ({ id: s.id, key: s.key, title: s.title })),
         rules: ref.rules.map((r) => ({ id: r.id, type: r.type, name: r.name, description: r.description, active: r.active, parts: r.parts })),

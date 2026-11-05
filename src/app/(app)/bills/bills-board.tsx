@@ -45,6 +45,7 @@ export type BillView = {
   latePayments: { until: string | null; amount: number }[];
   expenseAmount: number | null;
   linked: boolean;
+  paid: boolean;
   uploaded: boolean;
 };
 
@@ -103,7 +104,7 @@ export function BillsBoard({
         const Icon = ICONS[m.provider];
         const mine = bills.filter((b) => b.meterId === m.id);
         const latest = mine[0];
-        const overdue = latest?.dueDate && latest.dueDate < today;
+        const overdue = latest?.dueDate && latest.dueDate < today && !latest.paid;
         return (
           <Panel
             key={m.id}
@@ -167,8 +168,10 @@ export function BillsBoard({
                     </p>
                     <p className="mt-2 text-sm">
                       {latest.linked ? (
-                        <span className="inline-flex items-center gap-1.5 text-success">
-                          <CheckCircle2 className="size-4" /> In expenses{latest.expenseAmount !== null && latest.expenseAmount !== latest.payable ? ` (shows ${rs(latest.expenseAmount)})` : ""}
+                        <span className="inline-flex flex-wrap items-center gap-1.5 text-success">
+                          <CheckCircle2 className="size-4" /> {latest.paid ? "Paid · in expenses" : "In expenses"}
+                          {latest.expenseAmount !== null && latest.expenseAmount !== latest.payable ? ` (shows ${rs(latest.expenseAmount)})` : ""}
+                          {latest.paid ? null : <span className="text-muted-foreground">· attach the paid bill or set its date on the expense to stop reminders</span>}
                         </span>
                       ) : (
                         <span className="text-muted-foreground">Not added to expenses yet</span>

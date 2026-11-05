@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, ClipboardCopy, Download, Lock, LockOpen, MoreHorizontal, Pencil, Plus, Receipt, Search, Trash2 } from "lucide-react";
+import { ChevronDown, ClipboardCopy, Download, Lock, LockOpen, MoreHorizontal, Paperclip, Pencil, Plus, Receipt, Search, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -23,7 +23,7 @@ import { ResponsiveDialog } from "@/components/ledger/responsive-dialog";
 import { StatusBadge, syncBadgeKey } from "@/components/ledger/status-badge";
 import { ConfirmButton } from "@/components/ledger/confirm-button";
 import { cn } from "@/lib/utils";
-import { deleteExpense, setPeriodStatus } from "./actions";
+import { deleteExpense, expenseReceiptUrl, setPeriodStatus } from "./actions";
 import { ExpenseForm, type FormRef } from "./expense-form";
 import { StartMonth } from "./start-month";
 import { CopyDialog } from "./copy-dialog";
@@ -47,6 +47,7 @@ export type ExpenseView = {
   paidByUnitId: string | null;
   paidByCode: string | null;
   paidFromOwn: boolean;
+  hasReceipt: boolean;
   notes: string | null;
   expenseDate: string | null;
   sync: "synced" | "pending" | "failed" | "off" | null;
@@ -317,9 +318,30 @@ function Allocation({ e, mobile }: { e: ExpenseView; mobile?: boolean }) {
           ))}
           {e.paidByCode ? <div className="text-muted-foreground">Paid by {e.paidByCode}{e.paidFromOwn ? " (own pocket)" : ""}</div> : null}
           {e.expenseDate ? <div className="text-muted-foreground">{new Date(e.expenseDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</div> : null}
+          {e.hasReceipt ? <ViewBill expenseId={e.id} /> : null}
         </dl>
       )}
     </div>
+  );
+}
+
+function ViewBill({ expenseId }: { expenseId: string }) {
+  const [pending, start] = useTransition();
+  const open = () => {
+    const tab = window.open("", "_blank");
+    start(async () => {
+      const r = await expenseReceiptUrl(expenseId);
+      if (r.ok && tab) tab.location.href = r.data.url;
+      else {
+        tab?.close();
+        if (!r.ok) toast.error(r.error);
+      }
+    });
+  };
+  return (
+    <button type="button" onClick={open} disabled={pending} className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline">
+      <Paperclip className="size-3.5" /> Bill
+    </button>
   );
 }
 
@@ -394,6 +416,7 @@ function toInitial(e: ExpenseView) {
     expenseDate: e.expenseDate ?? "",
     paidByUnitId: e.paidByUnitId ?? undefined,
     paidFromOwn: e.paidFromOwn,
+    receiptPath: e.hasReceipt ? "attached" : "",
     notes: e.notes ?? "",
     splitMode: (o ? (o.type === "weights" ? "rule" : o.type) : "rule") as "rule" | "equal_units" | "percentage" | "custom_amounts",
     ruleId: e.splitRuleId ?? "",

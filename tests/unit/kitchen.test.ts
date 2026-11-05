@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { daysOfMonth, generateRoster, mealCounts } from "@/lib/kitchen";
+import { daysOfMonth, generateRoster, mealCounts, menuWeek, menuWeekday, weekOf } from "@/lib/kitchen";
 import { text } from "@/server/excel/layout";
 
 describe("duty roster generator", () => {
@@ -44,5 +44,22 @@ describe("excel text escaping", () => {
     expect(text("@SUM(A1)")).toBe("'@SUM(A1)");
     expect(text("Oil")).toBe("Oil");
     expect(text(null)).toBe("");
+  });
+});
+
+describe("printable week", () => {
+  it("lists Monday to Sunday around any day, across month ends", () => {
+    expect(weekOf("2026-11-04")).toEqual(["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08"]);
+    expect(weekOf("2026-11-02")[0]).toBe("2026-11-02");
+    expect(weekOf("2026-11-08")[0]).toBe("2026-11-02");
+    expect(weekOf("2026-12-31")).toEqual(["2026-12-28", "2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01", "2027-01-02", "2027-01-03"]);
+  });
+
+  it("uses menu week 1 for days 1-7, 2 for 8-14, 3 for 15-21 and 4 from the 22nd", () => {
+    expect(["2026-11-01", "2026-11-07", "2026-11-08", "2026-11-14", "2026-11-15", "2026-11-21", "2026-11-22", "2026-11-30"].map(menuWeek)).toEqual([1, 1, 2, 2, 3, 3, 4, 4]);
+  });
+
+  it("numbers weekdays Monday 1 to Sunday 7 like the menu", () => {
+    expect(["2026-11-02", "2026-11-07", "2026-11-08"].map(menuWeekday)).toEqual([1, 6, 7]);
   });
 });

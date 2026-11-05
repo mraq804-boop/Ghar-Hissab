@@ -1,4 +1,5 @@
 import "server-only";
+import { billPaid, type BillExpense } from "@/lib/utilities/bill-paid";
 import { allocateExpense, paisaToNumber, type Paisa, type UnitSettlement } from "@/lib/finance";
 import { periodLabel, resolvePeriod, type Period } from "@/lib/periods";
 import { canSeeAllBalances, getContext } from "@/server/auth";
@@ -139,7 +140,7 @@ export async function getDashboard(filters: DashboardFilters) {
   const monthStart = `${period.year}-${String(period.month).padStart(2, "0")}-01`;
   const { data: monthBills } = await ctx.supabase
     .from("utility_bills")
-    .select("id, payable, due_date, expense_id, utility_meters(label)")
+    .select("id, payable, due_date, expense_id, utility_meters(label), expenses(expense_date, receipt_path, deleted_at)")
     .eq("bill_month", monthStart);
   const todayIso = `${ty}-${String(tm).padStart(2, "0")}-${String(td).padStart(2, "0")}`;
   const soon = new Date(Date.UTC(ty, tm - 1, td + 3)).toISOString().slice(0, 10);
@@ -148,7 +149,7 @@ export async function getDashboard(filters: DashboardFilters) {
     const amount = Number(b.payable);
     const out: { id: string; kind: "arrived" | "due"; label: string; amount: number; dueDate: string | null }[] = [];
     if (!b.expense_id) out.push({ id: b.id, kind: "arrived", label, amount, dueDate: b.due_date });
-    else if (b.due_date && b.due_date >= todayIso && b.due_date <= soon) out.push({ id: b.id, kind: "due", label, amount, dueDate: b.due_date });
+    else if (!billPaid(b.expenses as unknown as BillExpense) && b.due_date && b.due_date >= todayIso && b.due_date <= soon) out.push({ id: b.id, kind: "due", label, amount, dueDate: b.due_date });
     return out;
   });
 

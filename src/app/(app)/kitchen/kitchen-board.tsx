@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Loader2, Plus, Sparkles, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Plus, Printer, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Field } from "@/components/ledger/field";
 import { ResponsiveDialog } from "@/components/ledger/responsive-dialog";
+import { menuWeek, menuWeekday, weekOf } from "@/lib/kitchen";
 import { MONTHS_LONG } from "@/lib/periods";
 import { cn } from "@/lib/utils";
 import { addSabzi, fillRoster, removeSabzi, saveDayCategory, saveDish, saveDutyDay } from "./actions";
@@ -68,6 +69,8 @@ function MenuBoard({ admin, slots, sabzi }: { admin: boolean; slots: Slot[]; sab
     });
 
   return (
+    <div className="space-y-4">
+    <PrintWeek slot={slot} />
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
       <div className="overflow-hidden rounded-2xl border bg-card">
         <div className="overflow-x-auto">
@@ -182,6 +185,65 @@ function MenuBoard({ admin, slots, sabzi }: { admin: boolean; slots: Slot[]; sab
         ) : null}
       </aside>
     </div>
+    </div>
+  );
+}
+
+function PrintWeek({ slot }: { slot: (week: number, weekday: number) => Slot | undefined }) {
+  const [which, setWhich] = useState<"this" | "next">("this");
+  const days = useMemo(() => {
+    const now = new Date();
+    if (which === "next") now.setDate(now.getDate() + 7);
+    const local = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    return weekOf(local);
+  }, [which]);
+  const show = (day: string, opts: Intl.DateTimeFormatOptions) => new Date(`${day}T00:00:00`).toLocaleDateString("en-GB", opts);
+  const range = `${show(days[0], { day: "numeric", month: "short" })} – ${show(days[6], { day: "numeric", month: "short", year: "numeric" })}`;
+
+  return (
+    <>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Select value={which} onValueChange={(v) => setWhich(v as "this" | "next")}>
+          <SelectTrigger className="h-9 w-40" aria-label="Week to print"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="this">This week</SelectItem>
+            <SelectItem value="next">Next week</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="outline" className="h-9" onClick={() => window.print()}>
+          <Printer /> Print {range}
+        </Button>
+      </div>
+
+      <div data-print-sheet className="hidden print:block">
+        <h1 className="text-2xl font-bold">Weekly kitchen menu</h1>
+        <p className="mt-1 text-base">{range}</p>
+        <table className="mt-5 w-full border-collapse text-lg">
+          <thead>
+            <tr className="text-left text-sm">
+              <th className="border border-black px-3 py-2">Day</th>
+              <th className="border border-black px-3 py-2">Date</th>
+              <th className="border border-black px-3 py-2">Dish</th>
+            </tr>
+          </thead>
+          <tbody>
+            {days.map((day) => {
+              const s = slot(menuWeek(day), menuWeekday(day));
+              return (
+                <tr key={day}>
+                  <td className="border border-black px-3 py-3 font-semibold">{show(day, { weekday: "long" })}</td>
+                  <td className="border border-black px-3 py-3 whitespace-nowrap">{show(day, { day: "numeric", month: "short" })}</td>
+                  <td className="border border-black px-3 py-3">
+                    {s?.dish || "—"}
+                    {s?.fixed_category ? <span className="ml-2 text-sm">({s.fixed_category})</span> : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

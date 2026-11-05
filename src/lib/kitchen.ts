@@ -11,6 +11,25 @@ export function daysOfMonth(year: number, month: number): string[] {
   return Array.from({ length: n }, (_, i) => `${year}-${String(month).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`);
 }
 
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+/** Monday to Sunday of the week that contains `day`. */
+export function weekOf(day: string): string[] {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return Array.from({ length: 7 }, (_, i) => iso(new Date(d.getTime() + i * 86_400_000)));
+}
+
+/** Which of the 4 menu weeks a date falls in: days 1-7 are week 1, 8-14 week 2, 15-21 week 3, the rest week 4. */
+export function menuWeek(day: string): number {
+  return Math.min(4, Math.ceil(Number(day.slice(8, 10)) / 7));
+}
+
+/** Menu weekday, Monday 1 to Sunday 7. */
+export function menuWeekday(day: string): number {
+  return ((new Date(`${day}T00:00:00Z`).getUTCDay() + 6) % 7) + 1;
+}
+
 /**
  * Two people cook each day: one takes two meals, the other takes one.
  * Pairs rotate (A+B, B+C, C+A) so everyone gets every third day off,

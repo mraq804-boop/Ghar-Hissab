@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Zap } from "lucide-react";
 import { EmptyState, PageHeader } from "@/components/ledger/page-header";
+import { billPaid } from "@/lib/utilities/bill-paid";
 import { getContext, isAdmin } from "@/server/auth";
 import { getReference } from "@/server/data/ledger";
 import { getMeterWatches } from "@/server/data/meter-watch";
@@ -29,7 +30,7 @@ async function Bills() {
     ctx.supabase.from("utility_meters").select("id, provider, label, reference_no, category_id, active, last_checked_at, last_error").order("created_at"),
     ctx.supabase
       .from("utility_bills")
-      .select("id, meter_id, bill_month, issue_date, due_date, units, payable, late_payments, expense_id, fetched_at, source, expenses(amount, deleted_at)")
+      .select("id, meter_id, bill_month, issue_date, due_date, units, payable, late_payments, expense_id, fetched_at, source, expenses(amount, deleted_at, expense_date, receipt_path)")
       .order("bill_month", { ascending: false })
       .limit(60),
   ]);
@@ -64,7 +65,7 @@ async function Bills() {
   }));
 
   const billViews: BillView[] = (bills ?? []).map((b) => {
-    const exp = b.expenses as unknown as { amount: string | null; deleted_at: string | null } | null;
+    const exp = b.expenses as unknown as { amount: string | null; deleted_at: string | null; expense_date: string | null; receipt_path: string | null } | null;
     const linked = exp && !exp.deleted_at ? exp : null;
     return {
       id: b.id,
@@ -77,6 +78,7 @@ async function Bills() {
       latePayments: (b.late_payments ?? []) as { until: string | null; amount: number }[],
       expenseAmount: linked?.amount !== undefined && linked?.amount !== null ? Number(linked.amount) : null,
       linked: Boolean(linked),
+      paid: billPaid(exp),
       uploaded: b.source === "upload",
     };
   });

@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
-import { Loader2, Sparkles, X } from "lucide-react";
+import { Loader2, Paperclip, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,8 @@ import { Field } from "@/components/ledger/field";
 import { VoiceButton } from "@/components/ledger/voice-button";
 import { formatPaisa, parseRupeesToPaisa } from "@/lib/finance/money";
 import { previewSplit } from "@/lib/finance/expense-preview";
+import { shrinkImage } from "@/lib/images";
+import { createSupabaseBrowser } from "@/lib/supabase/browser";
 import type { RuleRow } from "@/lib/finance/rules";
 import { suggestExpense, type HistoryItem, type Suggestion } from "@/lib/smart/suggest";
 import type { ExpenseInputForm, SplitInput } from "@/lib/validation/expense";
@@ -21,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { saveExpense } from "./actions";
 
 export type FormRef = {
+  householdId: string;
   units: { id: string; code: string; sort_order: number; is_purse_holder: boolean }[];
   sections: { id: string; key: string; title: string }[];
   rules: (RuleRow & { name: string; description: string | null; active: boolean })[];
@@ -65,6 +68,26 @@ export function ExpenseForm({
   const purse = refData.units.find((u) => u.is_purse_holder) ?? refData.units[0];
   const defaultRule = refData.rules.find((r) => r.type === "equal_units" && r.parts.length === refData.units.length) ?? refData.rules[0];
   const [pending, start] = useTransition();
+  const [receipt, setReceipt] = useState<{ path: string | null; name: string } | null>(initial?.receiptPath ? { path: null, name: "Bill attached" } : null);
+  const [uploading, setUploading] = useState(false);
+
+  const attach = async (f: File | undefined) => {
+    if (!f) return;
+    setUploading(true);
+    try {
+      const small = await shrinkImage(f);
+      const mime = small.type || f.type;
+      const ext = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf" } as Record<string, string>)[mime];
+      if (!ext) return toast.error("Attach a JPG, PNG, WebP or PDF.");
+      if (small.size > 10 * 1024 * 1024) return toast.error("That file is bigger than 10 MB.");
+      const path = `${refData.householdId}/expenses/${crypto.randomUUID()}.${ext}`;
+      const { error } = await createSupabaseBrowser().storage.from("receipts").upload(path, small, { contentType: mime, upsert: false });
+      if (error) return toast.error("The bill couldn't be uploaded. Try again.");
+      setReceipt({ path, name: f.name });
+    } finally {
+      setUploading(false);
+    }
+  };
   const [handledTitle, setHandledTitle] = useState<string | null>(null);
 
   const form = useForm<FormValues>({
@@ -156,6 +179,7 @@ export function ExpenseForm({
       expenseDate: values.expenseDate,
       paidByUnitId: values.paidByUnitId,
       paidFromOwn: values.paidByUnitId === purse?.id && !!values.paidFromOwn,
+      receiptPath: receipt?.path ?? "",
       notes: values.notes,
       split: toSplit(values),
     };
@@ -426,13 +450,28 @@ export function ExpenseForm({
         </Field>
       </div>
 
+      <Field label="Bill or receipt (optional)" htmlFor="receipt" hint="Attach the paid bill. Once a bill's expense has it, or a date, its due reminders stop.">
+        {receipt ? (
+          <div className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+            <Paperclip className="size-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate">{receipt.name}</span>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setReceipt(null)} disabled={uploading}>Replace</Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Input id="receipt" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="h-10" onChange={(e) => void attach(e.target.files?.[0])} disabled={uploading} />
+            {uploading ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
+          </div>
+        )}
+      </Field>
+
       <Field label="Notes" htmlFor="notes" hint="Shown in the Notes / Category column of the workbook">
         <Textarea id="notes" rows={2} {...register("notes")} />
       </Field>
 
       <div className="sticky bottom-0 -mx-4 flex gap-2 border-t bg-background px-4 pt-4 pb-1">
         <Button type="button" variant="outline" className="h-11 flex-1" onClick={onDone} disabled={pending}>Cancel</Button>
-        <Button type="submit" className="h-11 flex-[2]" disabled={pending || !preview.ok}>
+        <Button type="submit" className="h-11 flex-[2]" disabled={pending || uploading || !preview.ok}>
           {pending ? <Loader2 className="animate-spin" /> : null}
           {initial?.id ? "Save changes" : "Add expense"}
         </Button>

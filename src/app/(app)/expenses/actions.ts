@@ -12,6 +12,7 @@ import { insertCopies } from "@/server/data/copy-expenses";
 import { dailyFoodToCarry } from "@/lib/expenses/copy";
 import { dbError, forbidden, invalid, type ActionResult } from "@/server/actions/result";
 import { kickSync } from "@/server/excel/kick";
+import { createSupabaseAdmin } from "@/server/supabase/admin";
 
 export async function saveExpense(input: ExpenseInputForm): Promise<ActionResult<{ id: string; version: number }>> {
   const ctx = await getContext();
@@ -24,6 +25,11 @@ export async function saveExpense(input: ExpenseInputForm): Promise<ActionResult
 
   if (!ref.periods.some((p) => p.id === v.periodId)) return { ok: false, error: "That month no longer exists." };
   if (!ref.units.some((u) => u.id === v.paidByUnitId)) return { ok: false, error: "Choose who paid." };
+  if (v.receiptPath && !new RegExp(`^${ctx.householdId}/expenses/[0-9a-f-]{36}\\.(jpg|png|webp|pdf)$`).test(v.receiptPath)) {
+    return { ok: false, error: "That bill upload isn't valid. Attach it again." };
+  }
+  const oldReceipt =
+    v.id && v.receiptPath ? (await ctx.supabase.from("expenses").select("receipt_path").eq("id", v.id).maybeSingle()).data?.receipt_path ?? null : null;
 
   let amountPaisa: bigint | null;
   let override: ReturnType<typeof specToStored> | null = null;
@@ -55,12 +61,16 @@ export async function saveExpense(input: ExpenseInputForm): Promise<ActionResult
     expense_date: v.expenseDate,
     paid_by_unit_id: v.paidByUnitId,
     paid_from_own: v.paidFromOwn,
+    receipt_path: v.receiptPath,
     notes: v.notes,
   };
 
   const { data, error } = await ctx.supabase.rpc("upsert_expense", { p: payload });
   if (error) return dbError(error);
   const row = (data as { id: string; version: number }[])[0];
+  if (oldReceipt && oldReceipt !== v.receiptPath && oldReceipt.startsWith(`${ctx.householdId}/`)) {
+    await createSupabaseAdmin().storage.from("receipts").remove([oldReceipt]);
+  }
 
   revalidatePath("/", "layout");
   kickSync();
@@ -131,4 +141,14 @@ export async function setPeriodStatus(input: z.input<typeof statusSchema>): Prom
   if (error) return dbError(error);
   revalidatePath("/", "layout");
   return { ok: true, data: undefined, message: parsed.data.status === "closed" ? "Month closed" : "Month reopened" };
+}
+
+export async function expenseReceiptUrl(expenseId: string): Promise<ActionResult<{ url: string }>> {
+  const ctx = await getContext();
+  if (!z.uuid().safeParse(expenseId).success) return forbidden;
+  const { data: row } = await ctx.supabase.from("expenses").select("receipt_path").eq("id", expenseId).maybeSingle();
+  if (!row?.receipt_path) return { ok: false, error: "No bill is attached, or you don't have access to it." };
+  const { data, error } = await ctx.supabase.storage.from("receipts").createSignedUrl(row.receipt_path, 120);
+  if (error || !data) return { ok: false, error: "The bill couldn't be opened. Try again." };
+  return { ok: true, data: { url: data.signedUrl } };
 }
