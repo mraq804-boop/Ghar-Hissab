@@ -85,3 +85,14 @@ export function mealCounts(rows: DutyAssignment[]) {
   for (const r of rows) for (const m of [r.breakfast, r.lunch, r.dinner]) if (m) counts.set(m, (counts.get(m) ?? 0) + 1);
   return counts;
 }
+
+export const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+
+/** One line per weekday with every dish the 4-week menu uses on that day, in week order and without repeats. */
+export function genericMenu(slots: { week: number; weekday: number; dish: string; fixed_category: string }[]) {
+  return WEEKDAY_NAMES.map((day, i) => {
+    const forDay = slots.filter((s) => s.weekday === i + 1).sort((a, b) => a.week - b.week);
+    const dishes = forDay.map((s) => s.dish.trim()).filter((d, j, all) => d && all.findIndex((x) => x.toLowerCase() === d.toLowerCase()) === j);
+    return { day, category: forDay.find((s) => s.fixed_category)?.fixed_category ?? "", dishes };
+  });
+}

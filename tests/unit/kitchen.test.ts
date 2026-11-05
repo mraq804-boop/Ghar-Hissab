@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { daysOfMonth, generateRoster, mealCounts, menuWeek, menuWeekday, weekOf, weeksOfMonth } from "@/lib/kitchen";
+import { daysOfMonth, generateRoster, mealCounts, menuWeek, menuWeekday, weekOf, weeksOfMonth, genericMenu } from "@/lib/kitchen";
 import { text } from "@/server/excel/layout";
 
 describe("duty roster generator", () => {
@@ -75,5 +75,25 @@ describe("printable week", () => {
 
   it("numbers weekdays Monday 1 to Sunday 7 like the menu", () => {
     expect(["2026-11-02", "2026-11-07", "2026-11-08"].map(menuWeekday)).toEqual([1, 6, 7]);
+  });
+});
+
+describe("generic menu", () => {
+  it("lists each weekday's dishes from all 4 weeks without repeats", () => {
+    const slots = [
+      { week: 2, weekday: 2, dish: "Daal Mash", fixed_category: "Daal" },
+      { week: 1, weekday: 2, dish: "Daal Chana", fixed_category: "Daal" },
+      { week: 3, weekday: 2, dish: "daal chana", fixed_category: "Daal" },
+      { week: 4, weekday: 2, dish: "Daal Masoor", fixed_category: "Daal" },
+      { week: 1, weekday: 1, dish: "Sabzi + Chicken", fixed_category: "" },
+      { week: 2, weekday: 1, dish: "Sabzi + Chicken", fixed_category: "" },
+      { week: 1, weekday: 3, dish: " ", fixed_category: "Chawal" },
+    ];
+    const g = genericMenu(slots);
+    expect(g).toHaveLength(7);
+    expect(g[0]).toEqual({ day: "Monday", category: "", dishes: ["Sabzi + Chicken"] });
+    expect(g[1]).toEqual({ day: "Tuesday", category: "Daal", dishes: ["Daal Chana", "Daal Mash", "Daal Masoor"] });
+    expect(g[2].dishes).toEqual([]);
+    expect(g[6]).toEqual({ day: "Sunday", category: "", dishes: [] });
   });
 });

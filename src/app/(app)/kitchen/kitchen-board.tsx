@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Field } from "@/components/ledger/field";
 import { ResponsiveDialog } from "@/components/ledger/responsive-dialog";
-import { menuWeek, menuWeekday, weekOf, weeksOfMonth } from "@/lib/kitchen";
+import { genericMenu, menuWeek, menuWeekday, weekOf, weeksOfMonth } from "@/lib/kitchen";
 import { MONTHS_LONG } from "@/lib/periods";
 import { BASE_PEOPLE, SHOPPING_GROUPS, formatKg, shoppingList, type ShoppingRow } from "@/lib/shopping";
 import { cn } from "@/lib/utils";
@@ -72,7 +72,7 @@ function MenuBoard({ admin, slots, sabzi }: { admin: boolean; slots: Slot[]; sab
 
   return (
     <div className="space-y-4">
-    <PrintWeek slot={slot} admin={admin} />
+    <PrintWeek slot={slot} slots={slots} admin={admin} />
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
       <div className="overflow-hidden rounded-2xl border bg-card">
         <div className="overflow-x-auto">
@@ -250,9 +250,10 @@ function ShoppingToExpenses({ open, onOpenChange, list }: { open: boolean; onOpe
   );
 }
 
-function PrintWeek({ slot, admin }: { slot: (week: number, weekday: number) => Slot | undefined; admin: boolean }) {
+function PrintWeek({ slot, slots, admin }: { slot: (week: number, weekday: number) => Slot | undefined; slots: Slot[]; admin: boolean }) {
   const [addOpen, setAddOpen] = useState(false);
-  const [which, setWhich] = useState<"this" | "next" | "month" | "nextMonth">("next");
+  const [which, setWhich] = useState<"this" | "next" | "month" | "nextMonth" | "generic">("next");
+  const generic = which === "generic";
   const [sheet, setSheet] = useState<"menu" | "list">("menu");
   const [listOpen, setListOpen] = useState(false);
   const [people, setPeople] = useState(String(BASE_PEOPLE));
@@ -272,7 +273,34 @@ function PrintWeek({ slot, admin }: { slot: (week: number, weekday: number) => S
     return { weeks: [weekOf(local)], monthTitle: "", monthKey: "" };
   }, [which]);
   const pdfHref = (sheetKind: "menu" | "list") =>
-    `/api/export/kitchen?${new URLSearchParams(monthMode ? { month: monthKey, people } : { week: weeks[0][0], sheet: sheetKind, people })}`;
+    `/api/export/kitchen?${new URLSearchParams(generic ? { generic: "1" } : monthMode ? { month: monthKey, people } : { week: weeks[0][0], sheet: sheetKind, people })}`;
+  const [sharing, setSharing] = useState(false);
+  const sharePdf = async () => {
+    setSharing(true);
+    try {
+      const res = await fetch(pdfHref("list"));
+      if (!res.ok) throw new Error();
+      const file = new File([await res.blob()], `shopping-list-${weeks[0][0]}.pdf`, { type: "application/pdf" });
+      const download = () => {
+        const url = URL.createObjectURL(file);
+        const a = Object.assign(document.createElement("a"), { href: url, download: file.name });
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        toast.info("The PDF was downloaded. Open WhatsApp and attach it from your files.");
+      };
+      if (!navigator.canShare?.({ files: [file] })) return download();
+      try {
+        await navigator.share({ files: [file], title: "Shopping list" });
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        download();
+      }
+    } catch {
+      toast.error("The PDF couldn't be made. Try again.");
+    } finally {
+      setSharing(false);
+    }
+  };
   const days = weeks[0];
   const show = (day: string, opts: Intl.DateTimeFormatOptions) => new Date(`${day}T00:00:00`).toLocaleDateString("en-GB", opts);
   const rangeOf = (w: string[]) => `${show(w[0], { day: "numeric", month: "short" })} – ${show(w[6], { day: "numeric", month: "short", year: "numeric" })}`;
@@ -307,15 +335,16 @@ function PrintWeek({ slot, admin }: { slot: (week: number, weekday: number) => S
             <SelectItem value="next">Next week</SelectItem>
             <SelectItem value="month">This month</SelectItem>
             <SelectItem value="nextMonth">Next month</SelectItem>
+            <SelectItem value="generic">Generic menu</SelectItem>
           </SelectContent>
         </Select>
-        {monthMode ? null : (
+        {monthMode || generic ? null : (
           <Button variant={listOpen ? "secondary" : "outline"} className="h-9" onClick={() => setListOpen((o) => !o)} aria-expanded={listOpen}>
             <ShoppingBasket /> Shopping list
           </Button>
         )}
         <Button variant="outline" className="h-9" onClick={() => print("menu")}>
-          <Printer /> Print {monthMode ? `${monthTitle} (${weeks.length} weeks)` : range}
+          <Printer /> Print {generic ? "generic menu" : monthMode ? `${monthTitle} (${weeks.length} weeks)` : range}
         </Button>
         <Button variant="outline" className="h-9" asChild>
           <a href={pdfHref("menu")} download>
@@ -324,7 +353,7 @@ function PrintWeek({ slot, admin }: { slot: (week: number, weekday: number) => S
         </Button>
       </div>
 
-      {listOpen && !monthMode ? (
+      {listOpen && !monthMode && !generic ? (
         <section className="rounded-2xl border bg-card p-4 shadow-sm" aria-label="Shopping list">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -365,8 +394,11 @@ function PrintWeek({ slot, admin }: { slot: (week: number, weekday: number) => S
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <Button variant="outline" className="h-9" asChild>
               <a href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noreferrer">
-                <Share2 /> Share on WhatsApp
+                <Share2 /> Send as text
               </a>
+            </Button>
+            <Button variant="outline" className="h-9" onClick={sharePdf} disabled={sharing || !list.length}>
+              {sharing ? <Loader2 className="animate-spin" /> : <Share2 />} Send PDF on WhatsApp
             </Button>
             <Button variant={admin ? "outline" : "default"} className="h-9" onClick={() => print("list")} disabled={!list.length}>
               <Printer /> Print list
@@ -413,7 +445,25 @@ function PrintWeek({ slot, admin }: { slot: (week: number, weekday: number) => S
         </table>
       </div>
 
-      <div data-print-sheet={sheet === "menu" ? "" : undefined} className={cn("hidden", sheet === "menu" && "print:block")}>
+      <div data-print-sheet={sheet === "menu" && generic ? "" : undefined} className={cn("hidden", sheet === "menu" && generic && "print:block")}>
+        <h1 className="text-2xl font-bold">Kitchen menu</h1>
+        <p className="mt-1 text-base">What we cook on each day of the week</p>
+        <table className="mt-5 w-full border-collapse text-lg">
+          <tbody>
+            {genericMenu(slots).map((r) => (
+              <tr key={r.day}>
+                <td className="w-40 border border-black px-3 py-4 align-top font-bold">{r.day}</td>
+                <td className="border border-black px-3 py-4">
+                  {r.dishes.length ? r.dishes.join(" / ") : "—"}
+                  {r.category ? <span className="block text-sm">{r.category}</span> : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div data-print-sheet={sheet === "menu" && !generic ? "" : undefined} className={cn("hidden", sheet === "menu" && !generic && "print:block")}>
         <h1 className="text-2xl font-bold">{monthMode ? `Kitchen menu · ${monthTitle}` : "Weekly kitchen menu"}</h1>
         <p className="mt-1 text-base">{monthMode ? `${weeks.length} weeks of 7 days, Monday to Sunday · buy on the Sunday before each week (${headcount} people)` : range}</p>
         {weeks.map((w, i) => {

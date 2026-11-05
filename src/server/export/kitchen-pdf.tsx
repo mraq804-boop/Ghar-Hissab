@@ -1,6 +1,6 @@
 import "server-only";
 import { Document, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
-import { menuWeek, menuWeekday } from "@/lib/kitchen";
+import { genericMenu, menuWeek, menuWeekday } from "@/lib/kitchen";
 import { formatKg, shoppingList } from "@/lib/shopping";
 
 export type MenuSlot = { week: number; weekday: number; dish: string; fixed_category: string };
@@ -114,4 +114,30 @@ export function kitchenMenuPdf(weeks: string[][], slots: MenuSlot[], people: num
 
 export function shoppingListPdf(week: string[], slots: MenuSlot[], people: number): Promise<Buffer> {
   return renderToBuffer(<ListPdf week={week} slots={slots} people={people} />);
+}
+
+function GenericPdf({ slots }: { slots: MenuSlot[] }) {
+  return (
+    <Document title="Kitchen menu" author="Ghar Hisaab">
+      <Page size="A4" style={[s.page, { fontSize: 13 }]}>
+        <Text style={s.title}>Kitchen menu</Text>
+        <Text style={s.sub}>What we cook on each day of the week</Text>
+        <View style={{ borderTopWidth: 1, borderColor: "#000", marginTop: 6 }}>
+          {genericMenu(slots).map((r) => (
+            <View key={r.day} style={s.row} wrap={false}>
+              <Text style={[s.cell, s.bold, { width: 110, paddingVertical: 12 }]}>{r.day}</Text>
+              <View style={[s.cell, s.last, { flex: 1, paddingVertical: 12 }]}>
+                <Text>{r.dishes.length ? r.dishes.join(" / ") : "—"}</Text>
+                {r.category ? <Text style={[s.small, { marginTop: 2 }]}>{r.category}</Text> : null}
+              </View>
+            </View>
+          ))}
+        </View>
+      </Page>
+    </Document>
+  );
+}
+
+export function genericMenuPdf(slots: MenuSlot[]): Promise<Buffer> {
+  return renderToBuffer(<GenericPdf slots={slots} />);
 }
