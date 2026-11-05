@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { flushSync } from "react-dom";
-import { ChevronLeft, ChevronRight, Loader2, Plus, Printer, Receipt, Share2, ShoppingBasket, Sparkles, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Loader2, Plus, Printer, Receipt, Share2, ShoppingBasket, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -257,16 +257,22 @@ function PrintWeek({ slot, admin }: { slot: (week: number, weekday: number) => S
   const [listOpen, setListOpen] = useState(false);
   const [people, setPeople] = useState(String(BASE_PEOPLE));
   const monthMode = which === "month" || which === "nextMonth";
-  const { weeks, monthTitle } = useMemo(() => {
+  const { weeks, monthTitle, monthKey } = useMemo(() => {
     const now = new Date();
     if (which === "month" || which === "nextMonth") {
       const first = new Date(now.getFullYear(), now.getMonth() + (which === "nextMonth" ? 1 : 0), 1);
-      return { weeks: weeksOfMonth(first.getFullYear(), first.getMonth() + 1), monthTitle: `${MONTHS_LONG[first.getMonth()]} ${first.getFullYear()}` };
+      return {
+        weeks: weeksOfMonth(first.getFullYear(), first.getMonth() + 1),
+        monthTitle: `${MONTHS_LONG[first.getMonth()]} ${first.getFullYear()}`,
+        monthKey: `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, "0")}`,
+      };
     }
     if (which === "next") now.setDate(now.getDate() + 7);
     const local = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-    return { weeks: [weekOf(local)], monthTitle: "" };
+    return { weeks: [weekOf(local)], monthTitle: "", monthKey: "" };
   }, [which]);
+  const pdfHref = (sheetKind: "menu" | "list") =>
+    `/api/export/kitchen?${new URLSearchParams(monthMode ? { month: monthKey, people } : { week: weeks[0][0], sheet: sheetKind, people })}`;
   const days = weeks[0];
   const show = (day: string, opts: Intl.DateTimeFormatOptions) => new Date(`${day}T00:00:00`).toLocaleDateString("en-GB", opts);
   const rangeOf = (w: string[]) => `${show(w[0], { day: "numeric", month: "short" })} – ${show(w[6], { day: "numeric", month: "short", year: "numeric" })}`;
@@ -310,6 +316,11 @@ function PrintWeek({ slot, admin }: { slot: (week: number, weekday: number) => S
         )}
         <Button variant="outline" className="h-9" onClick={() => print("menu")}>
           <Printer /> Print {monthMode ? `${monthTitle} (${weeks.length} weeks)` : range}
+        </Button>
+        <Button variant="outline" className="h-9" asChild>
+          <a href={pdfHref("menu")} download>
+            <Download /> Download PDF
+          </a>
         </Button>
       </div>
 
@@ -360,6 +371,11 @@ function PrintWeek({ slot, admin }: { slot: (week: number, weekday: number) => S
             <Button variant={admin ? "outline" : "default"} className="h-9" onClick={() => print("list")} disabled={!list.length}>
               <Printer /> Print list
             </Button>
+            <Button variant="outline" className="h-9" asChild>
+              <a href={pdfHref("list")} download>
+                <Download /> Download list
+              </a>
+            </Button>
             {admin ? (
               <Button className="h-9" onClick={() => setAddOpen(true)} disabled={!list.length}>
                 <Receipt /> Add to expenses
@@ -386,7 +402,7 @@ function PrintWeek({ slot, admin }: { slot: (week: number, weekday: number) => S
             {list.map((r) => (
               <tr key={`${r.group}-${r.item}`}>
                 <td className="border border-black px-3 py-3">
-                  <span className="font-semibold">{r.item}</span> <span className="text-sm">({r.group})</span>
+                  <span className="font-semibold">{r.item}</span> {r.group !== r.item ? <span className="text-sm">({r.group})</span> : null}
                 </td>
                 <td className="border border-black px-3 py-3 whitespace-nowrap font-semibold">{formatKg(r.kg)}</td>
                 <td className="border border-black px-3 py-3 text-sm">{dayNames(r)}</td>

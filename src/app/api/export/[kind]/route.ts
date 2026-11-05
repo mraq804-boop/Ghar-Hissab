@@ -4,6 +4,10 @@ import { buildReport, parseFilters, ReportAccessError, reportType, type ReportTy
 import { reportToXlsx } from "@/server/export/xlsx";
 import { reportToPdf } from "@/server/export/pdf";
 import { personalReport } from "@/server/data/personal";
+import { kitchenMenuPdf, shoppingListPdf } from "@/server/export/kitchen-pdf";
+import { weekOf, weeksOfMonth } from "@/lib/kitchen";
+import { MONTHS_LONG } from "@/lib/periods";
+import { BASE_PEOPLE } from "@/lib/shopping";
 
 export const maxDuration = 30;
 
@@ -23,6 +27,28 @@ export async function GET(request: NextRequest, ctxRoute: RouteContext<"/api/exp
         "content-disposition": `attachment; filename="my-spending-${m}.${fmt}"`,
         "cache-control": "private, no-store",
       },
+    });
+  }
+  if (kind === "kitchen") {
+    const people = Math.min(100, Math.max(1, Number(sp.people) || BASE_PEOPLE));
+    const month = typeof sp.month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.month) ? sp.month : null;
+    const week = typeof sp.week === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.week) && !Number.isNaN(Date.parse(sp.week)) ? sp.week : null;
+    if (!month && !week) return NextResponse.json({ error: "choose a week or month" }, { status: 400 });
+    const { data: slots, error } = await ctx.supabase.from("meal_slots").select("week, weekday, dish, fixed_category");
+    if (error) return NextResponse.json({ error: "the menu couldn't be loaded" }, { status: 500 });
+    let body: Buffer;
+    let name: string;
+    if (month) {
+      const [y, m] = month.split("-").map(Number);
+      body = await kitchenMenuPdf(weeksOfMonth(y, m), slots, people, `${MONTHS_LONG[m - 1]} ${y}`);
+      name = `kitchen-menu-${month}.pdf`;
+    } else {
+      const days = weekOf(week!);
+      body = sp.sheet === "list" ? await shoppingListPdf(days, slots, people) : await kitchenMenuPdf([days], slots, people, null);
+      name = `${sp.sheet === "list" ? "shopping-list" : "kitchen-menu"}-${days[0]}.pdf`;
+    }
+    return new NextResponse(new Uint8Array(body), {
+      headers: { "content-type": "application/pdf", "content-disposition": `attachment; filename="${name}"`, "cache-control": "private, no-store" },
     });
   }
   let type: ReportType;
