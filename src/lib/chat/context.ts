@@ -107,6 +107,7 @@ export function buildChatContext(input: {
   poultry?: PoultryRates[];
   vegetables?: VegetableRates[];
   commodities?: CommodityRates | null;
+  marketUnavailable?: boolean;
   scope: ChatScope;
 }): string {
   const { scope } = input;
@@ -211,6 +212,9 @@ export function buildChatContext(input: {
         lines.push([e.title, e.category ?? "-", e.date ?? "no date", e.qty ?? "-", rs(e.amountPaisa!), `${rs(perKg!)}/kg`, month].join(" | "));
       }
     }
+  }
+  if (input.marketUnavailable) {
+    lines.push("", "## Official Lahore market rates (chicken, eggs, sabzi, mutton, beef): could not be loaded from the Lahore government website right now. If asked for an official rate, say it could not be loaded at the moment, to try again later or check lahore.punjab.gov.pk.");
   }
   if (input.poultry?.length) {
     lines.push("", "## Official Lahore poultry rates (Market Committee Lahore, Government of Punjab), newest first");

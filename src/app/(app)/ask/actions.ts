@@ -153,7 +153,7 @@ export async function askQuestion(input: { role: "user" | "assistant"; text: str
     };
   });
 
-  const market = await Promise.race([getMarketRates(), new Promise<null>((r) => setTimeout(() => r(null), 30_000))]).catch((e) => {
+  const market = await Promise.race([getMarketRates(), new Promise<null>((r) => setTimeout(() => r(null), 45_000))]).catch((e) => {
     console.error("Market rates unavailable", e instanceof Error ? e.message : e);
     return null;
   });
@@ -162,6 +162,7 @@ export async function askQuestion(input: { role: "user" | "assistant"; text: str
     poultry: market?.poultry,
     vegetables: market?.vegetables,
     commodities: market?.commodities,
+    marketUnavailable: !market,
     kitchen: menuRows?.length ? { people: BASE_PEOPLE, weeks: kitchenWeeks } : undefined,
     today,
     households: ref.units.filter((u) => u.active).map((u) => ({ code: u.code, isPurseHolder: u.is_purse_holder })),
