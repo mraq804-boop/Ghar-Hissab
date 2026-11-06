@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatKg, needsFor, shoppingCategory, shoppingList } from "@/lib/shopping";
+import { formatKg, knownRate, needsFor, shoppingCategory, shoppingList } from "@/lib/shopping";
 
 describe("shoppingCategory", () => {
   const cats = [
@@ -26,7 +26,7 @@ describe("needsFor", () => {
 
   it("splits mixed dishes into meat and sabzi", () => {
     expect(needsFor("Keema Matar", "Mutton / Keema")).toEqual([
-      { group: "Meat", item: "Keema (mutton)", kg: 2 },
+      { group: "Meat", item: "Keema (mutton)", kg: 1.5 },
       { group: "Sabzi", item: "Matar", kg: 1 },
     ]);
     expect(needsFor("Sabzi (seasonal) + Chicken", "Sabzi + Chicken")).toEqual([
@@ -65,5 +65,11 @@ describe("shoppingList", () => {
     expect(formatKg(1.25)).toBe("1.25 kg");
     expect(formatKg(2.5)).toBe("2.5 kg");
     expect(formatKg(3)).toBe("3 kg");
+  });
+
+  it("knows the family's keema rate only", () => {
+    expect(knownRate("Keema (mutton)")).toBe(2800);
+    expect(knownRate("Mutton")).toBeNull();
+    expect(knownRate("Fish")).toBeNull();
   });
 });

@@ -15,7 +15,7 @@ import { Field } from "@/components/ledger/field";
 import { ResponsiveDialog } from "@/components/ledger/responsive-dialog";
 import { genericMenu, menuWeek, menuWeekday, weekOf, weeksOfMonth } from "@/lib/kitchen";
 import { MONTHS_LONG } from "@/lib/periods";
-import { BASE_PEOPLE, SHOPPING_GROUPS, formatKg, shoppingList, type ShoppingRow } from "@/lib/shopping";
+import { BASE_PEOPLE, SHOPPING_GROUPS, formatKg, knownRate, shoppingList, type ShoppingRow } from "@/lib/shopping";
 import { cn } from "@/lib/utils";
 import { addShoppingToExpenses, addSabzi, fillRoster, removeSabzi, saveDayCategory, saveDish, saveDutyDay } from "./actions";
 
@@ -196,10 +196,15 @@ function ShoppingToExpenses({ open, onOpenChange, list }: { open: boolean; onOpe
   const [pending, start] = useTransition();
   const today = new Date();
   const [date, setDate] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`);
-  const [rows, setRows] = useState(list.map((r) => ({ group: r.group, item: r.item, kg: String(r.kg), amount: "" })));
+  const priceFor = (item: string, kg: string) => {
+    const rate = knownRate(item);
+    return rate && Number(kg) > 0 ? String(Math.round(rate * Number(kg))) : "";
+  };
+  const [rows, setRows] = useState(list.map((r) => ({ group: r.group, item: r.item, kg: String(r.kg), amount: priceFor(r.item, String(r.kg)) })));
   const priced = rows.filter((r) => r.amount.trim() && Number(r.kg) > 0);
   const total = priced.reduce((a, r) => a + (Number(r.amount.replace(/,/g, "")) || 0), 0);
-  const set = (i: number, patch: Partial<(typeof rows)[number]>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const set = (i: number, patch: Partial<(typeof rows)[number]>) =>
+    setRows((rs) => rs.map((r, j) => (j !== i ? r : patch.kg !== undefined && knownRate(r.item) ? { ...r, ...patch, amount: priceFor(r.item, patch.kg) } : { ...r, ...patch })));
 
   const save = () =>
     start(async () => {

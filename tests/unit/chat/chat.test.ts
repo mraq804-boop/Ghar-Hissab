@@ -207,7 +207,10 @@ describe("meat rates and the kitchen plan in the chat data", () => {
           {
             label: "Next week (Monday 9 Nov to Sunday 15 Nov)",
             meals: [{ day: "Saturday 14 Nov", dish: "Fish Fry", category: "Fish" }],
-            shopping: [{ group: "Fish", item: "Fish", kg: 2.5, days: ["Saturday"] }],
+            shopping: [
+              { group: "Fish", item: "Fish", kg: 2.5, days: ["Saturday"] },
+              { group: "Meat", item: "Keema (mutton)", kg: 1.5, days: ["Friday"] },
+            ],
           },
         ],
       },
@@ -215,6 +218,8 @@ describe("meat rates and the kitchen plan in the chat data", () => {
     });
     expect(text).toContain("planned quantities for 11 people");
     expect(text).toContain("Saturday 14 Nov Fish Fry (Fish)");
-    expect(text).toContain("Fish (Fish) 2.5 kg for Saturday");
+    expect(text).toContain("Fish (Fish) 2.5 kg for Saturday;");
+    expect(text).toContain("Keema (mutton) (Meat) 1.5 kg for Friday, about Rs 4,200 at Rs 2,800/kg");
+    expect(text).toContain("Keema (mutton): Rs 2,800 per kg");
   });
 });

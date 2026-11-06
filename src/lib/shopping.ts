@@ -13,7 +13,7 @@ export function needsFor(dish: string, category: string): Need[] {
   const mutton = /mutton|gosht/.test(d);
 
   if (d.includes("fish")) out.push({ group: "Fish", item: "Fish", kg: 2.5 });
-  if (d.includes("keema")) out.push({ group: "Meat", item: "Keema (mutton)", kg: 2 });
+  if (d.includes("keema")) out.push({ group: "Meat", item: "Keema (mutton)", kg: 1.5 });
   else if (mutton) out.push({ group: "Meat", item: "Mutton", kg: 3 });
   if (d.includes("chicken") || (d.includes("chinese") && !mutton)) out.push({ group: "Chicken", item: "Chicken", kg: seasonal ? 1.5 : d.includes("chinese") ? 2 : 3 });
   else if (d.includes("yakhni") && !mutton) out.push({ group: "Chicken", item: "Chicken", kg: 2.5 });
@@ -55,3 +55,7 @@ export function shoppingCategory<C extends { name: string; active: boolean }>(gr
 }
 
 export const formatKg = (kg: number) => `${Number.isInteger(kg) ? kg : kg.toFixed(2).replace(/0$/, "")} kg`;
+
+export const KNOWN_RATES: { match: RegExp; item: string; perKg: number }[] = [{ match: /keema/i, item: "Keema (mutton)", perKg: 2800 }];
+
+export const knownRate = (item: string) => KNOWN_RATES.find((r) => r.match.test(item))?.perKg ?? null;
