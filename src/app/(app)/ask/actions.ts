@@ -14,6 +14,7 @@ import type { ActionResult } from "@/server/actions/result";
 import { askGemini, ChatError } from "@/server/chat/gemini";
 import { expenseSpec, getPeriodLedgers, getReference, toPaisa } from "@/server/data/ledger";
 import { getMeterWatches } from "@/server/data/meter-watch";
+import { getMarketRates } from "@/server/rates/market";
 
 const turnsSchema = z
   .array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().trim().min(1).max(2000) }))
@@ -152,7 +153,15 @@ export async function askQuestion(input: { role: "user" | "assistant"; text: str
     };
   });
 
+  const market = await Promise.race([getMarketRates(), new Promise<null>((r) => setTimeout(() => r(null), 30_000))]).catch((e) => {
+    console.error("Market rates unavailable", e instanceof Error ? e.message : e);
+    return null;
+  });
+
   const data = buildChatContext({
+    poultry: market?.poultry,
+    vegetables: market?.vegetables,
+    commodities: market?.commodities,
     kitchen: menuRows?.length ? { people: BASE_PEOPLE, weeks: kitchenWeeks } : undefined,
     today,
     households: ref.units.filter((u) => u.active).map((u) => ({ code: u.code, isPurseHolder: u.is_purse_holder })),

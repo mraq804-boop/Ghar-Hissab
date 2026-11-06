@@ -26,6 +26,8 @@ const QUICK = [
   { label: "Bills due", question: "Which bills are due or not entered yet?" },
   { label: "Meat & sabzi", question: "How much did we spend on chicken, meat, fish and sabzi this month?" },
   { label: "Next week shopping", question: "What do we need to buy on Sunday for next week (meat, chicken, fish and sabzi), and what is on the menu?" },
+  { label: "Chicken rate today", question: "What is the official Lahore chicken rate today, and how does it compare with what we paid? Also the official mutton rate." },
+  { label: "Sabzi rates today", question: "What are the official Lahore sabzi rates today for tomato, onion, potato and the sabzi we usually buy?" },
   { label: "Meat rates", question: "What rate per kg did we pay recently for chicken, meat, fish and sabzi? Did any rate go up?" },
   { label: "Vs last month", question: "Compare this month with last month" },
 ];

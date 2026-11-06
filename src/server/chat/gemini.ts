@@ -16,6 +16,28 @@ type GeminiResponse = {
 
 export class ChatError extends Error {}
 
+/** Asks Gemini to read a picture and reply with JSON text. */
+export async function readImageWithGemini(prompt: string, image: { mimeType: string; base64: string }, maxOutputTokens = 512, fetchImpl: typeof fetch = fetch): Promise<string> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new ChatError("No Gemini key.");
+  const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  const res = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ inlineData: { mimeType: image.mimeType, data: image.base64 } }, { text: prompt }] }],
+      generationConfig: { temperature: 0, maxOutputTokens, responseMimeType: "application/json" },
+    }),
+    signal: AbortSignal.timeout(30_000),
+    cache: "no-store",
+  });
+  const body = (await res.json().catch(() => ({}))) as GeminiResponse;
+  if (!res.ok) throw new ChatError(`Gemini couldn't read the picture (${res.status}).`);
+  const text = body.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim();
+  if (!text) throw new ChatError("Gemini returned nothing for the picture.");
+  return text;
+}
+
 /** Sends the conversation to Gemini's generateContent endpoint and returns the reply text. */
 export async function askGemini(system: string, turns: ChatTurn[], fetchImpl: typeof fetch = fetch): Promise<string> {
   const key = process.env.GEMINI_API_KEY;
