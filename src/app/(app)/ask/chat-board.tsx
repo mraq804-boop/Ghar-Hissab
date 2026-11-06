@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { ArrowUp, Loader2, ShieldAlert, Sparkles, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -61,7 +62,7 @@ function Answer({ text }: { text: string }) {
   );
 }
 
-export function ChatBoard() {
+export function ChatBoard({ compact = false }: { compact?: boolean }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -92,16 +93,26 @@ export function ChatBoard() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-      <p className="flex gap-2 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2.5 text-xs text-warning">
-        <ShieldAlert className="mt-0.5 size-4 shrink-0" />
-        <span>
-          Questions are answered by Google Gemini (free). Each question sends this household&apos;s figures, and your own personal spending (amounts and categories, no notes), to Google using household codes
-          only: no names, phone numbers, notes or transaction IDs. Google may keep and review free-tier questions. Answers can be wrong, so
-          check important numbers in the app.
-        </span>
-      </p>
+      {compact ? (
+        <p className="flex gap-2 text-xs text-muted-foreground">
+          <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
+          <span>
+            Answered by Google Gemini from the household&apos;s figures (codes only, no names). Answers can be wrong, so check important numbers.{" "}
+            <Link href="/ask" className="underline underline-offset-2">More</Link>
+          </span>
+        </p>
+      ) : (
+        <p className="flex gap-2 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2.5 text-xs text-warning">
+          <ShieldAlert className="mt-0.5 size-4 shrink-0" />
+          <span>
+            Questions are answered by Google Gemini (free). Each question sends this household&apos;s figures, and your own personal spending (amounts and categories, no notes), to Google using household codes
+            only: no names, phone numbers, notes or transaction IDs. Google may keep and review free-tier questions. Answers can be wrong, so
+            check important numbers in the app.
+          </span>
+        </p>
+      )}
 
-      {turns.length === 0 ? (
+      {turns.length === 0 && !compact ? (
         <div className="rounded-2xl border bg-card p-5">
           <p className="flex items-center gap-2 font-heading text-lg font-semibold"><Sparkles className="size-5 text-haldi" /> Ask about the household money</p>
           <p className="mt-1 text-sm text-muted-foreground">English, Roman Urdu or Urdu. Try one of these:</p>
@@ -140,7 +151,7 @@ export function ChatBoard() {
 
       {error ? <p role="alert" className="rounded-lg border border-destructive/30 bg-danger-soft px-3 py-2 text-sm text-destructive">{error}</p> : null}
 
-      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] space-y-2 bg-background/95 pt-1 backdrop-blur md:bottom-4">
+      <div className={cn("sticky space-y-2 bg-background/95 pt-1 backdrop-blur", compact ? "bottom-0 pb-2" : "bottom-[calc(4.5rem+env(safe-area-inset-bottom))] md:bottom-4")}>
       <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none]" role="group" aria-label="Quick questions">
         {QUICK.map((q) => (
           <button

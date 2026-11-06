@@ -8,6 +8,8 @@ import { SyncPill } from "@/components/shell/sync-pill";
 import { getContext, isAdmin } from "@/server/auth";
 import { getReference } from "@/server/data/ledger";
 import { getSyncSummary } from "@/server/data/sync";
+import { geminiConfigured } from "@/server/chat/gemini";
+import { AskFab } from "@/components/shell/ask-fab";
 
 async function pendingReviewCount() {
   const ctx = await getContext();
@@ -74,4 +76,8 @@ export async function ShellBell() {
       ) : null}
     </Link>
   );
+}
+
+export function ShellAskFab() {
+  return geminiConfigured() ? <AskFab /> : null;
 }

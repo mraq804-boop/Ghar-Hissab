@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebarFallback } from "@/components/shell/app-sidebar";
 import { ThemeToggle } from "@/components/shell/theme-toggle";
-import { ShellBell, ShellCommandMenu, ShellSidebar, ShellTopbarData, ShellBottomNav } from "./shell-data";
+import { ShellAskFab, ShellBell, ShellCommandMenu, ShellSidebar, ShellTopbarData, ShellBottomNav } from "./shell-data";
 
 export default function AppLayout({ children }: LayoutProps<"/">) {
   return (
@@ -34,6 +34,9 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
       </SidebarInset>
       <Suspense fallback={null}>
         <ShellBottomNav />
+      </Suspense>
+      <Suspense fallback={null}>
+        <ShellAskFab />
       </Suspense>
     </SidebarProvider>
   );
