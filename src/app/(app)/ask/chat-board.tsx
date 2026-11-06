@@ -25,6 +25,8 @@ const QUICK = [
   { label: "Spent this month", question: "How much have we spent this month in total, by category?" },
   { label: "Bills due", question: "Which bills are due or not entered yet?" },
   { label: "Meat & sabzi", question: "How much did we spend on chicken, meat, fish and sabzi this month?" },
+  { label: "Next week shopping", question: "What do we need to buy on Sunday for next week (meat, chicken, fish and sabzi), and what is on the menu?" },
+  { label: "Meat rates", question: "What rate per kg did we pay recently for chicken, meat, fish and sabzi? Did any rate go up?" },
   { label: "Vs last month", question: "Compare this month with last month" },
 ];
 

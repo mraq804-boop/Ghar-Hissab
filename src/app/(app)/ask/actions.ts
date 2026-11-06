@@ -7,6 +7,8 @@ import { salaryMonth, staffLabels, type SalaryPayment, type Staff } from "@/lib/
 import { PROVIDERS, isProvider } from "@/lib/utilities/providers";
 import { methodLabel } from "@/lib/labels";
 import { periodLabel } from "@/lib/periods";
+import { menuWeek, menuWeekday, weekOf } from "@/lib/kitchen";
+import { BASE_PEOPLE, shoppingList } from "@/lib/shopping";
 import { canSeeAllBalances, getContext, isAdmin } from "@/server/auth";
 import type { ActionResult } from "@/server/actions/result";
 import { askGemini, ChatError } from "@/server/chat/gemini";
@@ -131,8 +133,28 @@ export async function askQuestion(input: { role: "user" | "assistant"; text: str
     return { label: labels.get(st.id) ?? "Staff", monthlyPaisa: toP(st.monthlySalary), payDay: st.payDay, paidPaisa: toP(m.paid), advancePaisa: toP(m.advances), leftPaisa: toP(m.left), yearPaisa: toP(salaryPayments.filter((p) => p.staffId === st.id).reduce((a, p) => a + p.amount, 0)) };
   });
 
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi" }).format(new Date());
+  const { data: menuRows } = await ctx.supabase.from("meal_slots").select("week, weekday, dish, fixed_category");
+  const thisWeek = weekOf(today);
+  const kitchenWeeks = [
+    { label: "This week", days: thisWeek },
+    { label: "Next week", days: weekOf(new Date(Date.parse(`${thisWeek[6]}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)) },
+  ].map(({ label, days }) => {
+    const meals = days.map((day) => {
+      const r = (menuRows ?? []).find((x) => x.week === menuWeek(day) && x.weekday === menuWeekday(day));
+      return { day, dish: r?.dish ?? "", category: r?.fixed_category ?? "" };
+    });
+    const name = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" });
+    return {
+      label: `${label} (${name(days[0])} to ${name(days[6])})`,
+      meals: meals.map((m) => ({ ...m, day: name(m.day) })),
+      shopping: shoppingList(meals).map((s) => ({ group: s.group, item: s.item, kg: s.kg, days: s.days.map((d) => name(d).split(" ")[0]) })),
+    };
+  });
+
   const data = buildChatContext({
-    today: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi" }).format(new Date()),
+    kitchen: menuRows?.length ? { people: BASE_PEOPLE, weeks: kitchenWeeks } : undefined,
+    today,
     households: ref.units.filter((u) => u.active).map((u) => ({ code: u.code, isPurseHolder: u.is_purse_holder })),
     rules: ref.rules.filter((r) => r.active).map((r) => `${r.name} = ${describeSpec(ruleToSpec(r), code)}`),
     months,

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildChatContext, type ChatMonth } from "@/lib/chat/context";
+import { buildChatContext, perKgPaisa, type ChatMonth } from "@/lib/chat/context";
 
 vi.mock("server-only", () => ({}));
 const { askGemini, ChatError } = await import("@/server/chat/gemini");
@@ -165,5 +165,56 @@ describe("personal plan in the chat data", () => {
     });
     expect(text).toContain("2026-11: 2 items planned, Rs 17,500 in total; 1 still to buy for Rs 6,000.");
     expect(text).toContain("Petrol | Fuel | Rs 12,000 | bought for Rs 11,500 | 2026-11-05");
+  });
+});
+
+describe("meat rates and the kitchen plan in the chat data", () => {
+  it("works out rupees per kg from a typed rate, kg or grams", () => {
+    expect(perKgPaisa({ qty: "21", amountPaisa: rs(10500), ratePaisa: rs(500) })).toBe(rs(500));
+    expect(perKgPaisa({ qty: "7 kg", amountPaisa: rs(6300), ratePaisa: null })).toBe(rs(900));
+    expect(perKgPaisa({ qty: "2.5 kg", amountPaisa: rs(3000), ratePaisa: null })).toBe(rs(1200));
+    expect(perKgPaisa({ qty: "500 gram", amountPaisa: rs(400), ratePaisa: null })).toBe(rs(800));
+    expect(perKgPaisa({ qty: "3", amountPaisa: rs(570), ratePaisa: null })).toBeNull();
+    expect(perKgPaisa({ qty: "2 Box", amountPaisa: rs(100), ratePaisa: null })).toBeNull();
+    expect(perKgPaisa({ qty: "7 kg", amountPaisa: null, ratePaisa: null })).toBeNull();
+  });
+
+  it("lists daily food rates, newest first, only for those who see expenses", () => {
+    const month: ChatMonth = {
+      ...october,
+      expenses: [
+        { title: "Chicken", section: "Daily", category: "Chicken & meat", kind: "variable", amountPaisa: rs(6300), qty: "7 kg", ratePaisa: null, split: "Pool", paidBy: "AQ", date: "2026-11-08" },
+        { title: "Fish", section: "Daily", category: "Chicken & meat", kind: "variable", amountPaisa: rs(3000), qty: "2.5 kg", ratePaisa: null, split: "Pool", paidBy: "AQ", date: "2026-11-15" },
+        { title: "Oil", section: "Groceries", category: "Groceries", kind: "essential", amountPaisa: rs(9150), qty: "15 kg", ratePaisa: null, split: "Pool", paidBy: "AQ", date: null },
+      ],
+    };
+    const text = buildChatContext({ ...base, months: [month], scope: { seeExpenses: true, seeAllBalances: true, ownUnit: "AQ" } });
+    const section = text.slice(text.indexOf("## Rate per kg"));
+    expect(section).toContain("Fish | Chicken & meat | 2026-11-15 | 2.5 kg | Rs 3,000 | Rs 1,200/kg");
+    expect(section.indexOf("Fish |")).toBeLessThan(section.indexOf("Chicken |"));
+    expect(section).not.toContain("Oil |");
+    expect(text).toContain("7 kg (Rs 900/kg)");
+    const member = buildChatContext({ ...base, months: [month], scope: { seeExpenses: false, seeAllBalances: false, ownUnit: "AK" } });
+    expect(member).not.toContain("Rate per kg");
+  });
+
+  it("includes the menu and shopping list for this week and next", () => {
+    const text = buildChatContext({
+      ...base,
+      kitchen: {
+        people: 11,
+        weeks: [
+          {
+            label: "Next week (Monday 9 Nov to Sunday 15 Nov)",
+            meals: [{ day: "Saturday 14 Nov", dish: "Fish Fry", category: "Fish" }],
+            shopping: [{ group: "Fish", item: "Fish", kg: 2.5, days: ["Saturday"] }],
+          },
+        ],
+      },
+      scope: { seeExpenses: false, seeAllBalances: false, ownUnit: "AK" },
+    });
+    expect(text).toContain("planned quantities for 11 people");
+    expect(text).toContain("Saturday 14 Nov Fish Fry (Fish)");
+    expect(text).toContain("Fish (Fish) 2.5 kg for Saturday");
   });
 });
