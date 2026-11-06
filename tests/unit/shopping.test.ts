@@ -67,9 +67,10 @@ describe("shoppingList", () => {
     expect(formatKg(3)).toBe("3 kg");
   });
 
-  it("knows the family's keema rate only", () => {
+  it("knows the family's keema and fish rates", () => {
     expect(knownRate("Keema (mutton)")).toBe(2800);
     expect(knownRate("Mutton")).toBeNull();
-    expect(knownRate("Fish")).toBeNull();
+    expect(knownRate("Fish")).toBe(800);
+    expect(knownRate("Chicken")).toBeNull();
   });
 });

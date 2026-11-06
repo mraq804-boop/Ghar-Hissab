@@ -218,8 +218,32 @@ describe("meat rates and the kitchen plan in the chat data", () => {
     });
     expect(text).toContain("planned quantities for 11 people");
     expect(text).toContain("Saturday 14 Nov Fish Fry (Fish)");
-    expect(text).toContain("Fish (Fish) 2.5 kg for Saturday;");
+    expect(text).toContain("Fish (Fish) 2.5 kg for Saturday, about Rs 2,000 at Rs 800/kg;");
     expect(text).toContain("Keema (mutton) (Meat) 1.5 kg for Friday, about Rs 4,200 at Rs 2,800/kg");
     expect(text).toContain("Keema (mutton): Rs 2,800 per kg");
+  });
+
+  it("includes the rest of month forecast with priced kitchen items and bills to come", () => {
+    const text = buildChatContext({
+      ...base,
+      restOfMonth: {
+        from: "2026-11-07",
+        to: "2026-11-30",
+        days: 24,
+        people: 11,
+        kitchen: [
+          { group: "Fish", item: "Fish", kg: 10, perKg: 800, rateFrom: "family's own rate", days: ["Sat 7"] },
+          { group: "Meat", item: "Mutton", kg: 3, perKg: null, rateFrom: null, days: ["Fri 20"] },
+        ],
+        billsToCome: [{ title: "Internet", category: "Internet", lastMonthPaisa: 220_000n }],
+      },
+      scope: { seeExpenses: true, seeAllBalances: true, ownUnit: null },
+    });
+    expect(text).toContain("Rest of this month forecast (2026-11-07 to 2026-11-30, 24 days");
+    expect(text).toContain("Fish | Fish | 10 kg | Rs 800/kg (family's own rate) | Rs 8,000 | Sat 7");
+    expect(text).toContain("Kitchen expected total for the items with a rate: Rs 8,000. Not included because no rate is known: Mutton.");
+    expect(text).toContain("Internet: Rs 2,200\n");
+    expect(text).not.toContain("Internet (");
+    expect(text).toContain("Bills expected total: Rs 2,200.");
   });
 });

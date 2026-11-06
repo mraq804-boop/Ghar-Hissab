@@ -9,6 +9,7 @@ import { methodLabel } from "@/lib/labels";
 import { periodLabel } from "@/lib/periods";
 import { menuWeek, menuWeekday, weekOf } from "@/lib/kitchen";
 import { BASE_PEOPLE, shoppingList } from "@/lib/shopping";
+import { billsToCome, priceShopping, restOfMonthDays } from "@/lib/forecast";
 import { canSeeAllBalances, getContext, isAdmin } from "@/server/auth";
 import type { ActionResult } from "@/server/actions/result";
 import { askGemini, ChatError, transcribeWithGemini } from "@/server/chat/gemini";
@@ -158,7 +159,37 @@ export async function askQuestion(input: { role: "user" | "assistant"; text: str
     return null;
   });
 
+  const restDays = restOfMonthDays(today);
+  const dayName = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", timeZone: "UTC" });
+  const restMeals = restDays.map((day) => {
+    const r = (menuRows ?? []).find((x) => x.week === menuWeek(day) && x.weekday === menuWeekday(day));
+    return { day, dish: r?.dish ?? "", category: r?.fixed_category ?? "" };
+  });
+  const newestChicken = market?.poultry[0];
+  const ym = (p: { year: number; month: number }) => p.year * 12 + p.month;
+  const thisLedger = ledgers.find((l) => `${l.period.year}-${String(l.period.month).padStart(2, "0")}` === nowMonth);
+  const lastLedger = thisLedger ? ledgers.find((l) => ym(l.period) === ym(thisLedger.period) - 1) : undefined;
+  const isBill = (sectionId: string | null) => /bill/i.test(ref.sections.find((s) => s.id === sectionId)?.title ?? "");
+  const restOfMonth =
+    restDays.length > 0
+      ? {
+          from: restDays[0],
+          to: restDays.at(-1)!,
+          days: restDays.length,
+          people: BASE_PEOPLE,
+          kitchen: priceShopping(shoppingList(restMeals), newestChicken ? { perKg: newestChicken.broilerMeatRetail, date: newestChicken.date } : null).map((k) => ({ ...k, days: k.days.map(dayName) })),
+          billsToCome:
+            lastLedger && thisLedger && (isAdmin(ctx) || ctx.settings.membersSeeAllExpenses)
+              ? billsToCome(
+                  lastLedger.expenses.filter((e) => isBill(e.section_id)).map((e) => ({ title: e.title, category: ref.categories.find((c) => c.id === e.category_id)?.name ?? null, amountPaisa: toPaisa(e.amount) })),
+                  thisLedger.expenses.filter((e) => isBill(e.section_id)),
+                )
+              : [],
+        }
+      : undefined;
+
   const data = buildChatContext({
+    restOfMonth,
     poultry: market?.poultry,
     vegetables: market?.vegetables,
     commodities: market?.commodities,

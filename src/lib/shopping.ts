@@ -56,6 +56,9 @@ export function shoppingCategory<C extends { name: string; active: boolean }>(gr
 
 export const formatKg = (kg: number) => `${Number.isInteger(kg) ? kg : kg.toFixed(2).replace(/0$/, "")} kg`;
 
-export const KNOWN_RATES: { match: RegExp; item: string; perKg: number }[] = [{ match: /keema/i, item: "Keema (mutton)", perKg: 2800 }];
+export const KNOWN_RATES: { match: RegExp; item: string; perKg: number }[] = [
+  { match: /keema/i, item: "Keema (mutton)", perKg: 2800 },
+  { match: /fish/i, item: "Fish", perKg: 800 },
+];
 
 export const knownRate = (item: string) => KNOWN_RATES.find((r) => r.match.test(item))?.perKg ?? null;
