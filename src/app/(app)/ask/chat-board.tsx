@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, useTransition } from "react";
-import { ArrowUp, Loader2, ShieldAlert, Sparkles, Zap } from "lucide-react";
+import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { ArrowUp, Loader2, Mic, ShieldAlert, Sparkles, Square, Volume2, VolumeX, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { askQuestion } from "./actions";
+import { downsample, encodeWav, speakable, SPEECH_RATE, toMono } from "@/lib/audio/wav";
+import { askQuestion, transcribeQuestion } from "./actions";
 
 type Turn = { role: "user" | "assistant"; text: string };
 
@@ -66,7 +67,42 @@ function Answer({ text }: { text: string }) {
   );
 }
 
+const noop = () => () => {};
+const canRecord = () => typeof window !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia) && typeof MediaRecorder !== "undefined";
+const canSpeak = () => typeof window !== "undefined" && "speechSynthesis" in window;
+
+async function toWav(blob: Blob): Promise<Blob> {
+  const ctx = new AudioContext();
+  try {
+    const audio = await ctx.decodeAudioData(await blob.arrayBuffer());
+    const channels = Array.from({ length: audio.numberOfChannels }, (_, i) => audio.getChannelData(i));
+    return new Blob([encodeWav(downsample(toMono(channels), audio.sampleRate), Math.min(audio.sampleRate, SPEECH_RATE))], { type: "audio/wav" });
+  } finally {
+    void ctx.close();
+  }
+}
+
+function speak(text: string, onEnd: () => void) {
+  const synth = window.speechSynthesis;
+  synth.cancel();
+  const u = new SpeechSynthesisUtterance(speakable(text));
+  const urdu = /[\u0600-\u06FF]/.test(text);
+  const voices = synth.getVoices();
+  const voice = urdu ? voices.find((v) => v.lang.startsWith("ur")) : (voices.find((v) => v.lang === "en-IN") ?? voices.find((v) => v.lang.startsWith("en")));
+  if (voice) u.voice = voice;
+  u.lang = voice?.lang ?? (urdu ? "ur-PK" : "en-IN");
+  u.onend = onEnd;
+  u.onerror = onEnd;
+  synth.speak(u);
+}
+
 export function ChatBoard({ compact = false }: { compact?: boolean }) {
+  const recordable = useSyncExternalStore(noop, canRecord, () => false);
+  const canListen = useSyncExternalStore(noop, canSpeak, () => false);
+  const [voice, setVoice] = useState<"idle" | "recording" | "hearing">("idle");
+  const [speaking, setSpeaking] = useState<number | null>(null);
+  const recorder = useRef<MediaRecorder | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +113,25 @@ export function ChatBoard({ compact = false }: { compact?: boolean }) {
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [turns, pending]);
 
-  const send = (question: string) => {
+  useEffect(
+    () => () => {
+      if (canSpeak()) window.speechSynthesis.cancel();
+      recorder.current?.stream.getTracks().forEach((t) => t.stop());
+    },
+    [],
+  );
+
+  const readAloud = (i: number, text: string) => {
+    if (speaking === i) {
+      window.speechSynthesis.cancel();
+      setSpeaking(null);
+      return;
+    }
+    setSpeaking(i);
+    speak(text, () => setSpeaking((s) => (s === i ? null : s)));
+  };
+
+  const send = (question: string, spoken = false) => {
     const q = question.trim();
     if (!q || pending) return;
     const next: Turn[] = [...turns, { role: "user", text: q }];
@@ -86,13 +140,59 @@ export function ChatBoard({ compact = false }: { compact?: boolean }) {
     setError(null);
     start(async () => {
       const r = await askQuestion(next.slice(-11));
-      if (r.ok) setTurns((t) => [...t, { role: "assistant", text: r.data.answer }]);
+      if (r.ok) {
+        setTurns((t) => [...t, { role: "assistant", text: r.data.answer }]);
+        if (spoken && canSpeak()) readAloud(next.length, r.data.answer);
+      }
       else {
         setError(r.error);
         setTurns((t) => t.slice(0, -1));
         setDraft(q);
       }
     });
+  };
+
+  const stopRecording = () => {
+    if (timer.current) clearTimeout(timer.current);
+    if (recorder.current?.state === "recording") recorder.current.stop();
+  };
+
+  const startRecording = async () => {
+    if (canSpeak()) window.speechSynthesis.cancel();
+    setSpeaking(null);
+    setError(null);
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+    } catch {
+      setError("The microphone is blocked. Allow microphone access for this site in the browser settings, then try again.");
+      return;
+    }
+    const rec = new MediaRecorder(stream);
+    const chunks: Blob[] = [];
+    rec.ondataavailable = (e) => {
+      if (e.data.size) chunks.push(e.data);
+    };
+    rec.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      recorder.current = null;
+      setVoice("hearing");
+      try {
+        const form = new FormData();
+        form.set("audio", await toWav(new Blob(chunks, { type: rec.mimeType })));
+        const r = await transcribeQuestion(form);
+        if (r.ok) send(r.data.text, true);
+        else setError(r.error);
+      } catch {
+        setError("That recording couldn't be read. Try again or type the question.");
+      } finally {
+        setVoice("idle");
+      }
+    };
+    recorder.current = rec;
+    rec.start();
+    setVoice("recording");
+    timer.current = setTimeout(stopRecording, 30_000);
   };
 
   return (
@@ -139,7 +239,22 @@ export function ChatBoard({ compact = false }: { compact?: boolean }) {
                 t.role === "user" ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm border bg-card",
               )}
             >
-              {t.role === "user" ? <p className="whitespace-pre-wrap">{t.text}</p> : <Answer text={t.text} />}
+              {t.role === "user" ? (
+                <p className="whitespace-pre-wrap">{t.text}</p>
+              ) : (
+                <>
+                  <Answer text={t.text} />
+                  {canListen ? (
+                    <button
+                      type="button"
+                      onClick={() => readAloud(i, t.text)}
+                      className="mt-2 -ml-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    >
+                      {speaking === i ? <><VolumeX className="size-3.5" /> Stop</> : <><Volume2 className="size-3.5" /> Listen</>}
+                    </button>
+                  ) : null}
+                </>
+              )}
             </div>
           </li>
         ))}
@@ -190,9 +305,24 @@ export function ChatBoard({ compact = false }: { compact?: boolean }) {
               send(draft);
             }
           }}
-          placeholder="e.g. Doodh pe is mahine kitna kharch hua?"
+          placeholder={voice === "recording" ? "Listening… tap stop when done" : voice === "hearing" ? "Hearing your question…" : "e.g. Doodh pe is mahine kitna kharch hua?"}
+          disabled={voice !== "idle"}
           className="max-h-40 min-h-11 resize-none border-0 shadow-none focus-visible:ring-0"
         />
+        {recordable ? (
+          <Button
+            type="button"
+            size="icon"
+            variant={voice === "recording" ? "destructive" : "outline"}
+            className={cn("size-11 shrink-0 rounded-xl", voice === "recording" && "animate-pulse")}
+            disabled={pending || voice === "hearing"}
+            onClick={voice === "recording" ? stopRecording : startRecording}
+            aria-label={voice === "recording" ? "Stop recording" : "Ask by voice"}
+            title={voice === "recording" ? "Stop" : "Speak your question"}
+          >
+            {voice === "hearing" ? <Loader2 className="animate-spin" /> : voice === "recording" ? <Square /> : <Mic />}
+          </Button>
+        ) : null}
         <Button type="submit" size="icon" className="size-11 shrink-0 rounded-xl" disabled={pending || !draft.trim()} aria-label="Ask">
           {pending ? <Loader2 className="animate-spin" /> : <ArrowUp />}
         </Button>

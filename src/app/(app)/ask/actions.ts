@@ -11,7 +11,7 @@ import { menuWeek, menuWeekday, weekOf } from "@/lib/kitchen";
 import { BASE_PEOPLE, shoppingList } from "@/lib/shopping";
 import { canSeeAllBalances, getContext, isAdmin } from "@/server/auth";
 import type { ActionResult } from "@/server/actions/result";
-import { askGemini, ChatError } from "@/server/chat/gemini";
+import { askGemini, ChatError, transcribeWithGemini } from "@/server/chat/gemini";
 import { expenseSpec, getPeriodLedgers, getReference, toPaisa } from "@/server/data/ledger";
 import { getMeterWatches } from "@/server/data/meter-watch";
 import { getMarketRates } from "@/server/rates/market";
@@ -187,5 +187,23 @@ export async function askQuestion(input: { role: "user" | "assistant"; text: str
     if (e instanceof ChatError) return { ok: false, error: e.message };
     console.error("Chat failed", e instanceof Error ? e.message : e);
     return { ok: false, error: "Something went wrong. Try again." };
+  }
+}
+
+export async function transcribeQuestion(form: FormData): Promise<ActionResult<{ text: string }>> {
+  const ctx = await getContext();
+  const audio = form.get("audio");
+  if (!(audio instanceof Blob) || audio.size < 1000) return { ok: false, error: "Nothing was recorded. Hold the phone closer and try again." };
+  if (audio.size > 3 * 1024 * 1024) return { ok: false, error: "That recording is too long. Keep the question under 30 seconds." };
+  if (audio.type !== "audio/wav") return { ok: false, error: "That recording couldn't be read." };
+  if (!allow(ctx.userId)) return { ok: false, error: "That's a lot of questions at once. Wait a minute and ask again." };
+  try {
+    const text = (await transcribeWithGemini({ mimeType: "audio/wav", base64: Buffer.from(await audio.arrayBuffer()).toString("base64") })).slice(0, 500);
+    if (!text) return { ok: false, error: "Couldn't hear a question. Try again a little louder." };
+    return { ok: true, data: { text } };
+  } catch (e) {
+    if (e instanceof ChatError) return { ok: false, error: e.message };
+    console.error("Transcribe failed", e instanceof Error ? e.message : e);
+    return { ok: false, error: "Something went wrong. Try again or type the question." };
   }
 }

@@ -75,3 +75,33 @@ export async function askGemini(system: string, turns: ChatTurn[], fetchImpl: ty
   if (!text) throw new ChatError("Gemini returned an empty answer. Try asking it differently.");
   return text;
 }
+
+export const TRANSCRIBE_PROMPT = `Write down exactly what the speaker says in this recording. They are asking a question about household money, bills, the kitchen menu or market rates, in English, Urdu or a mix.
+Write Urdu speech in Roman Urdu (Latin letters), English words in English, and numbers as digits. Do not answer the question or add anything else.
+If nobody speaks, reply with nothing.`;
+
+/** Turns a short spoken question into text. */
+export async function transcribeWithGemini(audio: { mimeType: string; base64: string }, fetchImpl: typeof fetch = fetch): Promise<string> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new ChatError("Chat isn't set up yet. The administrator needs to add a Gemini key.");
+  const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  let res: Response;
+  try {
+    res = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ inlineData: { mimeType: audio.mimeType, data: audio.base64 } }, { text: TRANSCRIBE_PROMPT }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 300 },
+      }),
+      signal: AbortSignal.timeout(30_000),
+      cache: "no-store",
+    });
+  } catch {
+    throw new ChatError("Couldn't reach Gemini to hear that. Try again or type the question.");
+  }
+  const body = (await res.json().catch(() => ({}))) as GeminiResponse;
+  if (res.status === 429) throw new ChatError("The free Gemini limit is used up for now. Try again in a minute.");
+  if (!res.ok) throw new ChatError("Gemini couldn't hear that. Try again or type the question.");
+  return body.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim() ?? "";
+}
