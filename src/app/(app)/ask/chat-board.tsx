@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { ArrowUp, Loader2, ShieldAlert, Sparkles } from "lucide-react";
+import { ArrowUp, Loader2, ShieldAlert, Sparkles, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,16 @@ const SUGGESTIONS = [
   "What was our biggest expense this month?",
   "Which bills are not entered yet?",
   "Compare this month with last month",
+];
+
+const QUICK = [
+  { label: "Purse balance", question: "How much money is left in the purse right now?" },
+  { label: "Collected", question: "How much has been collected into the purse this month, and from whom?" },
+  { label: "Who owes", question: "Who still has to pay, and how much does each household owe?" },
+  { label: "Spent this month", question: "How much have we spent this month in total, by category?" },
+  { label: "Bills due", question: "Which bills are due or not entered yet?" },
+  { label: "Meat & sabzi", question: "How much did we spend on chicken, meat, fish and sabzi this month?" },
+  { label: "Vs last month", question: "Compare this month with last month" },
 ];
 
 function Inline({ text }: { text: string }) {
@@ -130,12 +140,27 @@ export function ChatBoard() {
 
       {error ? <p role="alert" className="rounded-lg border border-destructive/30 bg-danger-soft px-3 py-2 text-sm text-destructive">{error}</p> : null}
 
+      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] space-y-2 bg-background/95 pt-1 backdrop-blur md:bottom-4">
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none]" role="group" aria-label="Quick questions">
+        {QUICK.map((q) => (
+          <button
+            key={q.label}
+            type="button"
+            onClick={() => send(q.question)}
+            disabled={pending}
+            title={q.question}
+            className="flex shrink-0 items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-sm whitespace-nowrap hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-50"
+          >
+            <Zap className="size-3.5 text-haldi" /> {q.label}
+          </button>
+        ))}
+      </div>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           send(draft);
         }}
-        className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] flex items-end gap-2 rounded-2xl border bg-background p-2 shadow-sm md:bottom-4"
+        className="flex items-end gap-2 rounded-2xl border bg-background p-2 shadow-sm"
       >
         <label htmlFor="question" className="sr-only">Your question</label>
         <Textarea
@@ -157,6 +182,7 @@ export function ChatBoard() {
           {pending ? <Loader2 className="animate-spin" /> : <ArrowUp />}
         </Button>
       </form>
+      </div>
     </div>
   );
 }
