@@ -58,7 +58,7 @@ export const formatKg = (kg: number) => `${Number.isInteger(kg) ? kg : kg.toFixe
 
 export const KNOWN_RATES: { match: RegExp; item: string; perKg: number }[] = [
   { match: /keema/i, item: "Keema (mutton)", perKg: 2800 },
-  { match: /fish/i, item: "Fish", perKg: 800 },
+  { match: /fish/i, item: "Fish", perKg: 600 },
 ];
 
 export const knownRate = (item: string) => KNOWN_RATES.find((r) => r.match.test(item))?.perKg ?? null;

@@ -218,7 +218,7 @@ describe("meat rates and the kitchen plan in the chat data", () => {
     });
     expect(text).toContain("planned quantities for 11 people");
     expect(text).toContain("Saturday 14 Nov Fish Fry (Fish)");
-    expect(text).toContain("Fish (Fish) 2.5 kg for Saturday, about Rs 2,000 at Rs 800/kg;");
+    expect(text).toContain("Fish (Fish) 2.5 kg for Saturday, about Rs 1,500 at Rs 600/kg;");
     expect(text).toContain("Keema (mutton) (Meat) 1.5 kg for Friday, about Rs 4,200 at Rs 2,800/kg");
     expect(text).toContain("Keema (mutton): Rs 2,800 per kg");
   });

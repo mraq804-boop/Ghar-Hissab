@@ -21,7 +21,7 @@ describe("rest of month forecast", () => {
       ],
       { perKg: 563, date: "2026-11-05" },
     );
-    expect(items.map((i) => i.perKg)).toEqual([2800, 800, 563, null]);
+    expect(items.map((i) => i.perKg)).toEqual([2800, 600, 563, null]);
     expect(items[2].rateFrom).toContain("2026-11-05");
     expect(priceShopping([{ group: "Chicken", item: "Chicken", kg: 1, days: [] }], null)[0].perKg).toBeNull();
   });

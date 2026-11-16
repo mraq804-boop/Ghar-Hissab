@@ -70,7 +70,7 @@ describe("shoppingList", () => {
   it("knows the family's keema and fish rates", () => {
     expect(knownRate("Keema (mutton)")).toBe(2800);
     expect(knownRate("Mutton")).toBeNull();
-    expect(knownRate("Fish")).toBe(800);
+    expect(knownRate("Fish")).toBe(600);
     expect(knownRate("Chicken")).toBeNull();
   });
 });

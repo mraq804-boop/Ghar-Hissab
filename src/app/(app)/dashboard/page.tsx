@@ -61,7 +61,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
   const filtered = d.filteredTotal !== null;
   const headline = d.filteredTotal ?? s.splitTotal;
   const headlineChange = filtered ? pctChange(d.filteredTotal!, d.previousFilteredTotal) : change;
-  const billsDue = d.billNotices.filter((b) => b.kind === "due").length + s.pendingBillCount;
+  const billsDue = d.billNotices.filter((b) => b.kind !== "arrived").length + s.pendingBillCount;
   const owing = s.units.filter((u) => u.balancePaisa < 0n).length;
   const previousName = d.previousPeriod ? periodLabel(d.previousPeriod) : null;
   const summary = d.seeAll
@@ -303,12 +303,14 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
                 key={`${b.kind}-${b.id}`}
                 href={b.kind === "arrived" ? "/bills" : `/bills/view?id=${b.id}`}
                 icon={Zap}
-                tone={b.kind === "due" ? "warning" : "neutral"}
-                title={b.kind === "arrived" ? `${b.label} bill arrived: ${formatPaisa(BigInt(Math.round(b.amount * 100)))}` : `${b.label} bill due ${b.dueDate ? format(new Date(`${b.dueDate}T00:00:00`), "d MMM") : "soon"}`}
+                tone={b.kind === "overdue" ? "danger" : b.kind === "due" ? "warning" : "neutral"}
+                title={b.kind === "arrived" ? `${b.label} bill arrived: ${formatPaisa(BigInt(Math.round(b.amount * 100)))}` : `${b.label} bill ${b.kind === "overdue" ? "overdue since" : "due"} ${b.dueDate ? format(new Date(`${b.dueDate}T00:00:00`), "d MMM") : "soon"}`}
               >
                 {b.kind === "arrived"
                   ? `Due ${b.dueDate ? format(new Date(`${b.dueDate}T00:00:00`), "d MMM") : "soon"}.${d.isAdmin ? " Tap to add it to expenses." : ""}`
-                  : `${formatPaisa(BigInt(Math.round(b.amount * 100)))} to pay LESCO by then`}
+                  : b.kind === "overdue"
+                    ? `${formatPaisa(BigInt(Math.round(b.amount * 100)))} not paid yet. Set the paid date on the expense once paid.`
+                    : `${formatPaisa(BigInt(Math.round(b.amount * 100)))} to pay. Set the paid date on the expense once paid.`}
               </AttentionItem>
             ))}
             {d.alerts.map((a) => (
