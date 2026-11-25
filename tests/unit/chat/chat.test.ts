@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildChatContext, perKgPaisa, type ChatMonth } from "@/lib/chat/context";
+import { buildChatContext, CHAT_INSTRUCTIONS, perKgPaisa, type ChatMonth } from "@/lib/chat/context";
 
 vi.mock("server-only", () => ({}));
 const { askGemini, ChatError } = await import("@/server/chat/gemini");
@@ -245,5 +245,25 @@ describe("meat rates and the kitchen plan in the chat data", () => {
     expect(text).toContain("Internet: Rs 2,200\n");
     expect(text).not.toContain("Internet (");
     expect(text).toContain("Bills expected total: Rs 2,200.");
+  });
+
+  it("lists Abbu's money with what is still to return", () => {
+    const text = buildChatContext({
+      ...base,
+      abbu: {
+        paidPaisa: 1_250_000n,
+        returnedPaisa: 500_000n,
+        owedPaisa: 750_000n,
+        entries: [
+          { date: "2026-11-20", kind: "returned", amountPaisa: 500_000n, note: "cash" },
+          { date: "2026-11-18", kind: "paid", amountPaisa: 450_000n, note: "Atta 20 kg" },
+        ],
+      },
+      scope: { seeExpenses: true, seeAllBalances: true, ownUnit: "AQ" },
+    });
+    expect(text).toContain("Abbu paid in total: Rs 12,500. Returned to him: Rs 5,000. Still to return to Abbu: Rs 7,500.");
+    expect(text).toContain("2026-11-18 | Abbu paid | Rs 4,500 | Atta 20 kg");
+    expect(text).toContain("2026-11-20 | returned to Abbu | Rs 5,000 | cash");
+    expect(CHAT_INSTRUCTIONS).toContain("Abbu ko kitna dena hai");
   });
 });

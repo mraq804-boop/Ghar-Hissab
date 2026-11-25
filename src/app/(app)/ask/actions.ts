@@ -10,6 +10,7 @@ import { periodLabel } from "@/lib/periods";
 import { menuWeek, menuWeekday, weekOf } from "@/lib/kitchen";
 import { BASE_PEOPLE, shoppingList } from "@/lib/shopping";
 import { billsToCome, priceShopping, restOfMonthDays } from "@/lib/forecast";
+import { getAbbuMoney } from "@/server/data/abbu";
 import { canSeeAllBalances, getContext, isAdmin } from "@/server/auth";
 import type { ActionResult } from "@/server/actions/result";
 import { askGemini, ChatError, transcribeWithGemini } from "@/server/chat/gemini";
@@ -188,8 +189,17 @@ export async function askQuestion(input: { role: "user" | "assistant"; text: str
         }
       : undefined;
 
+  const abbuMoney = await getAbbuMoney();
   const data = buildChatContext({
     restOfMonth,
+    abbu: abbuMoney
+      ? {
+          paidPaisa: abbuMoney.paidPaisa,
+          returnedPaisa: abbuMoney.returnedPaisa,
+          owedPaisa: abbuMoney.owedPaisa,
+          entries: abbuMoney.entries.slice(0, 40).map((e) => ({ date: e.onDate, kind: e.kind, amountPaisa: e.amountPaisa, note: e.note })),
+        }
+      : undefined,
     poultry: market?.poultry,
     vegetables: market?.vegetables,
     commodities: market?.commodities,

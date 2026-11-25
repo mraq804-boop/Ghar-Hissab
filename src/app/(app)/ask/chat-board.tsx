@@ -25,6 +25,7 @@ const QUICK = [
   { label: "Who owes", question: "Who still has to pay, and how much does each household owe?" },
   { label: "Spent this month", question: "How much have we spent this month in total, by category?" },
   { label: "Bills due", question: "Which bills are due or not entered yet?" },
+  { label: "Abbu's money", question: "How much do we still have to return to Abbu, and what did he pay for?" },
   { label: "Meat & sabzi", question: "How much did we spend on chicken, meat, fish and sabzi this month?" },
   { label: "Next week shopping", question: "What do we need to buy on Sunday for next week (meat, chicken, fish and sabzi), and what is on the menu?" },
   { label: "Chicken rate today", question: "What is the official Lahore chicken rate today, and how does it compare with what we paid? Also the official mutton rate." },
