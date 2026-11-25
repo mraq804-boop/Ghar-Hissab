@@ -105,6 +105,7 @@ export function ExpenseForm({
       expenseDate: "",
       paidByUnitId: purse?.id ?? "",
       paidFromOwn: false,
+      paidByAbbu: false,
       notes: "",
       splitMode: "rule",
       ruleId: defaultRule?.id ?? "",
@@ -178,7 +179,8 @@ export function ExpenseForm({
       amount: values.amount,
       expenseDate: values.expenseDate,
       paidByUnitId: values.paidByUnitId,
-      paidFromOwn: values.paidByUnitId === purse?.id && !!values.paidFromOwn,
+      paidFromOwn: values.paidByUnitId === purse?.id && !!values.paidFromOwn && !values.paidByAbbu,
+      paidByAbbu: values.paidByUnitId === purse?.id && !!values.paidByAbbu,
       receiptPath: receipt?.path ?? "",
       notes: values.notes,
       split: toSplit(values),
@@ -416,18 +418,20 @@ export function ExpenseForm({
         <Field
           label="Paid by"
           htmlFor="paidByUnitId"
-          hint={`Paid from the purse adds no payment. Anyone else, or ${purse?.code ?? "the purse-holder"} from their own pocket, gets a payment sent to Payments for you to approve.`}
+          hint={v.paidByAbbu ? "Shared like any expense. The amount is added to \"Still to return to Abbu\" on the dashboard." : `Paid from the purse adds no payment. Anyone else, or ${purse?.code ?? "the purse-holder"} from their own pocket, gets a payment sent to Payments for you to approve.`}
         >
           <Controller
             control={control}
             name="paidByUnitId"
             render={({ field }) => (
               <Select
-                value={v.paidFromOwn && field.value === purse?.id ? `${field.value}:own` : field.value}
+                value={v.paidByAbbu && field.value === purse?.id ? "abbu" : v.paidFromOwn && field.value === purse?.id ? `${field.value}:own` : field.value}
                 onValueChange={(value) => {
-                  const [id, own] = value.split(":");
+                  const abbu = value === "abbu";
+                  const [id, own] = abbu ? [purse?.id ?? "", ""] : value.split(":");
                   field.onChange(id);
                   setValue("paidFromOwn", own === "own");
+                  setValue("paidByAbbu", abbu);
                 }}
               >
                 <SelectTrigger id="paidByUnitId" className="h-10 w-full"><SelectValue /></SelectTrigger>
@@ -440,6 +444,7 @@ export function ExpenseForm({
                         ]
                       : [<SelectItem key={u.id} value={u.id}>{u.code}</SelectItem>],
                   )}
+                  {purse ? <SelectItem value="abbu">Abbu (return to him later)</SelectItem> : null}
                 </SelectContent>
               </Select>
             )}

@@ -13,6 +13,7 @@ import { dailyFoodToCarry } from "@/lib/expenses/copy";
 import { dbError, forbidden, invalid, type ActionResult } from "@/server/actions/result";
 import { kickSync } from "@/server/excel/kick";
 import { createSupabaseAdmin } from "@/server/supabase/admin";
+import { syncAbbuForExpense } from "@/server/data/abbu";
 
 export async function saveExpense(input: ExpenseInputForm): Promise<ActionResult<{ id: string; version: number }>> {
   const ctx = await getContext();
@@ -60,7 +61,7 @@ export async function saveExpense(input: ExpenseInputForm): Promise<ActionResult
     split_override: override,
     expense_date: v.expenseDate,
     paid_by_unit_id: v.paidByUnitId,
-    paid_from_own: v.paidFromOwn,
+    paid_from_own: v.paidByAbbu ? false : v.paidFromOwn,
     receipt_path: v.receiptPath,
     notes: v.notes,
   };
@@ -68,6 +69,13 @@ export async function saveExpense(input: ExpenseInputForm): Promise<ActionResult
   const { data, error } = await ctx.supabase.rpc("upsert_expense", { p: payload });
   if (error) return dbError(error);
   const row = (data as { id: string; version: number }[])[0];
+  const abbu = await syncAbbuForExpense(
+    row.id,
+    v.paidByAbbu && amountPaisa !== null && amountPaisa > 0n
+      ? { amount: paisaToDecimalString(amountPaisa), onDate: v.expenseDate || new Date().toISOString().slice(0, 10), note: v.title }
+      : null,
+  );
+  if (abbu.error && v.paidByAbbu) return dbError(abbu.error);
   if (oldReceipt && oldReceipt !== v.receiptPath && oldReceipt.startsWith(`${ctx.householdId}/`)) {
     await createSupabaseAdmin().storage.from("receipts").remove([oldReceipt]);
   }
@@ -86,6 +94,7 @@ export async function deleteExpense(input: z.input<typeof deleteSchema>): Promis
   if (!parsed.success) return invalid(parsed.error);
   const { error } = await ctx.supabase.rpc("delete_expense", { expense_id: parsed.data.id, expected_version: parsed.data.version });
   if (error) return dbError(error);
+  await syncAbbuForExpense(parsed.data.id, null);
   revalidatePath("/", "layout");
   kickSync();
   return { ok: true, data: undefined, message: "Expense deleted" };

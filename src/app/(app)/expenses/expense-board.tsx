@@ -47,6 +47,7 @@ export type ExpenseView = {
   paidByUnitId: string | null;
   paidByCode: string | null;
   paidFromOwn: boolean;
+  paidByAbbu: boolean;
   hasReceipt: boolean;
   notes: string | null;
   expenseDate: string | null;
@@ -316,7 +317,7 @@ function Allocation({ e, mobile }: { e: ExpenseView; mobile?: boolean }) {
               <dd><Money paisa={s.sharePaisa} decimals={s.sharePaisa % 100n !== 0n} /></dd>
             </div>
           ))}
-          {e.paidByCode ? <div className="text-muted-foreground">Paid by {e.paidByCode}{e.paidFromOwn ? " (own pocket)" : ""}</div> : null}
+          {e.paidByAbbu ? <div className="text-muted-foreground">Paid by Abbu</div> : e.paidByCode ? <div className="text-muted-foreground">Paid by {e.paidByCode}{e.paidFromOwn ? " (own pocket)" : ""}</div> : null}
           {e.expenseDate ? <div className="text-muted-foreground">{new Date(e.expenseDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</div> : null}
           {e.hasReceipt ? <ViewBill expenseId={e.id} /> : null}
         </dl>
@@ -416,6 +417,7 @@ function toInitial(e: ExpenseView) {
     expenseDate: e.expenseDate ?? "",
     paidByUnitId: e.paidByUnitId ?? undefined,
     paidFromOwn: e.paidFromOwn,
+    paidByAbbu: e.paidByAbbu,
     receiptPath: e.hasReceipt ? "attached" : "",
     notes: e.notes ?? "",
     splitMode: (o ? (o.type === "weights" ? "rule" : o.type) : "rule") as "rule" | "equal_units" | "percentage" | "custom_amounts",

@@ -10,6 +10,7 @@ import { expenseSpec, getExpenseHistory, getPeriodLedgers, getReference, toExpen
 import { getConnection, getScopeStates, recordStatus } from "@/server/data/sync";
 import { ExpenseBoard, type ExpenseView } from "./expense-board";
 import { StartMonth } from "./start-month";
+import { abbuExpenseIds } from "@/server/data/abbu";
 
 export const metadata: Metadata = { title: "Expenses" };
 
@@ -59,6 +60,7 @@ async function Expenses({ searchParams }: { searchParams: PageProps<"/expenses">
     admin ? getConnection() : null,
     admin ? getExpenseHistory(ref.periods) : [],
   ]);
+  const fromAbbu = await abbuExpenseIds(ledger.expenses.map((e) => e.id));
   const connected = Boolean(connection?.has_token && connection.item_id);
   const scopeState = states.find((s) => s.scope === `period:${period.id}`);
   const units = unitRefs(ref.units);
@@ -87,6 +89,7 @@ async function Expenses({ searchParams }: { searchParams: PageProps<"/expenses">
       paidByUnitId: e.paid_by_unit_id,
       paidByCode: e.paid_by_unit_id ? code(e.paid_by_unit_id) : null,
       paidFromOwn: e.paid_from_own,
+      paidByAbbu: fromAbbu.has(e.id),
       hasReceipt: Boolean(e.receipt_path),
       notes: e.notes,
       expenseDate: e.expense_date,

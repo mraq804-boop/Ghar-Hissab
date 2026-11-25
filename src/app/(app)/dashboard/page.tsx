@@ -20,6 +20,8 @@ import { publicEnv } from "@/lib/env";
 import { buildMonthSummary } from "@/lib/smart/summary";
 import { ShareSummary } from "@/components/ledger/share-summary";
 import { CategoryFilter } from "@/components/dashboard/category-filter";
+import { AbbuMoney } from "@/components/dashboard/abbu-money";
+import { getAbbuMoney } from "@/server/data/abbu";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -35,7 +37,10 @@ const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : u
 
 async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard">["searchParams"] }) {
   const sp = await searchParams;
-  const d = await getDashboard({ m: one(sp.m), unit: one(sp.unit), cat: one(sp.cat), cats: one(sp.cats), group: one(sp.group) });
+  const [d, abbu] = await Promise.all([
+    getDashboard({ m: one(sp.m), unit: one(sp.unit), cat: one(sp.cat), cats: one(sp.cats), group: one(sp.group) }),
+    getAbbuMoney(),
+  ]);
 
   if (d.empty) {
     return (
@@ -335,6 +340,12 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
           </ul>
         </Panel>
       </div>
+
+      {abbu && (abbu.entries.length || d.isAdmin) ? (
+        <Panel title="Abbu's money" description="What Abbu paid for the house and what has been returned to him from the purse" bodyClassName="p-0">
+          <AbbuMoney admin={d.isAdmin} paidPaisa={abbu.paidPaisa} returnedPaisa={abbu.returnedPaisa} owedPaisa={abbu.owedPaisa} entries={abbu.entries} />
+        </Panel>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-5">
         <Panel
